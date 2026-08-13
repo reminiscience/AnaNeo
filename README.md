@@ -50,52 +50,32 @@ Download new release and overwrite existing files with package contents. Because
 
 ## Features
 
-General:
-
-- Supports the layouts *Neo*, *NeoQwertz*, *Noted* and *AnNoted* – AnNoted is Noted's own variant with special spaces on the space bar; in extension mode against `kbdnoted.dll`, AnNoted is active, while Noted itself is only selectable in standalone mode
-- Use tray menu to switch between layouts
-- Lockable layers: Capslock (both shift keys), mod 3 lock (both mod 3 keys), mod 4 lock (both mod 4 keys) and further locks configured freely via `"locks"` in `config.json`. `M3+Esc` releases all locks. While a layer is locked, the tray icon changes color and the tooltip names the lock.
-- Themed layers: Beyond layers 1 to 4 there are five themed blocks, each with its own block modifier (Mod5 to Mod9). A block is locked (`M3+F2` to `M3+F6`); once the base layer is locked, holding Shift, Mod3, or Mod4 reaches the block's other layers. No physical key carries Mod5 to Mod9 – every block is reachable exclusively through locking.
+- Supports the layouts *Neo*, *NeoQwertz*, *Noted* and *AnNoted*, switchable from the tray menu. AnNoted is Noted's own variant; in extension mode against `kbdnoted.dll` it is the active one, while Noted itself is selectable in standalone mode only.
+- **Lockable layers**: Capslock (both Shift keys), mod 3 lock, mod 4 lock, and any further lock you configure via `"locks"` in `config.json`. `M3+Esc` releases everything. While a layer is locked the tray icon changes colour and its tooltip names the lock.
+- **Themed layers**: beyond layers 1 to 4, *AnNoted* has five themed blocks and a modifier layer – 21 in all. Each block has its own modifier (Mod5 to Mod9); since no physical key carries those, a block is entered by locking it, and holding Shift, Mod3 or Mod4 then reaches its other layers.
 
     | Layers | Trigger | Block |
     |---|---|---|
     | 1–4 | – / Shift / Mod3 / Mod4 | as usual |
-    | 5–8 | Mod5 / +Shift / +Mod3 / +Mod4 | maths and logic (7 = superscript, 8 = subscript) |
-    | 9–12 | Mod6 / +Shift / +Mod3 / +Mod4 | typography (11/12 carry three compose dead keys, rest still in reserve) |
-    | 13–14 | Mod7 / +Shift | Ancient Greek, lower/upper case |
-    | 15–16 | Mod8 / +Shift | Cyrillic (Russian) |
-    | 17–20 | Mod9 / +Shift / +Mod3 / +Mod4 | extra: symbol zones, emoji (19), dice/alchemy/technology (20) |
-    | 21 | Mod3+Mod4 | compose modifiers, reachable from **every** lock state |
+    | 5–8 | `M3+F2` / +Shift / +Mod3 / +Mod4 | maths and logic (7 = superscript, 8 = subscript) |
+    | 9–12 | `M3+F3` / +Shift / +Mod3 / +Mod4 | typography |
+    | 13–14 | `M3+F4` / +Shift | Ancient Greek, lower/upper case |
+    | 15–16 | `M3+F5` / +Shift | Cyrillic (Russian) |
+    | 17–20 | `M3+F6` / +Shift / +Mod3 / +Mod4 | extra: symbols, emoji (19), dice and alchemy (20) |
+    | 21 | hold `Mod3+Mod4` | the six compose modifiers, reachable from **every** lock state |
 
-    Layer 21 carries the six starting characters of the compose grammar on the home row, each on the initial letter of its category: `𝔵` font variant (S), `ⓧ` enclosure (E), `↻` rotation (D), `ₓ` subscript (T), `˞` retroflex hook (R), `ˣ` superscript (H). It is the only layer that exempts itself from locking – pressing `Mod3+Mod4` inside a locked block lands there instead of on layer 1. Example: `Mod3+Mod4`, `S`, release, then `d K` gives `𝕂`.
+    **Only *AnNoted* has these layers** – *Neo*, *NeoQwertz* and *Noted* stay at their six published ones. The space bar carries its own hierarchy of ever narrower spaces on layers 3 to 7.
 
-    Default triggers: `M3+F2` maths, `M3+F3` typography, `M3+F4` Greek, `M3+F5` Cyrillic, `M3+F6` extra. `M3+F7` adds Shift to the lock or removes it again, keeping you on the block's second layer.
+    👉 **[The wiki documents every layer](https://github.com/reminiscience/AnaNeo/wiki/Layers)**, one page per block, with a picture of each.
 
-    The space key carries its own hierarchy: layer 3 a non-breaking space, layer 4 a narrow non-breaking space, layer 5 a thin space, layer 6 a hair space, layer 7 a zero-width space; from layer 8 on it types normally. Layer 4's numpad-0 moves to `w` to make room. Until the grammar round the compose prefixes for super- and subscript sat on the `^` key; they now live on layer 21 together with the other modifiers, and `Mod3`+`^` no longer produces anything – the one spot where AnNoted deliberately departs from the Neo standard.
-
-    **Only the *AnNoted* layout has these layers.** *Neo*, *NeoQwertz*, and *Noted* stay at their six published layers; of the themed-block triggers they ship only `M3+F2`, and there the lock is called `Mod3+Mod4` because it hits their existing layer 6.
-
-    Two consequences of this layer split in AnNoted: `Shift+Mod3` has no layer of its own and falls back to layer 1 (`Mod3+Mod4` has hit the modifier layer 21 since the grammar round). And within a locked block, only the defined extensions (+Shift, and for maths, typography, and extra also +Mod3/+Mod4) reach a layer – anything else falls back to layer 1 as well; release the lock briefly with `M3+Esc` if you need special characters or navigation in between.
-- **On-screen keyboard**: Toggle using tray menu or with shortcut `M3+F1`. Switches between layers as modifiers are pressed. While a layer is locked, a strip at the top names the current layer, its block, and the modifier set ("Layer 13 · Griechisch · Mod7"); if a compose sequence is running at the same time, it shares the strip. Also draws characters beyond the Basic Multilingual Plane correctly (chess, alchemy, Mathematical Alphanumeric Symbols); to do so, a bundled symbol font (*Noto Sans Symbols 2*, directory `fonts/`, licensed under the SIL Open Font License 1.1, text in `fonts/OFL.txt`) is loaded privately into the process at startup, without installing it. If no font has a matching glyph, the key shows its code point in small text instead of an empty box. Five color schemes are available; the default since package 5b is `Sachlich` (light/dark follows the Windows setting automatically) – anyone who previously had `ColorClassic` (the old default) set gets `Sachlich` automatically on the next start, while an explicitly chosen `ColorGreen` is left untouched.
-- *All* dead keys and compose combinations. These can be extended by users; the list `composeModules` in `config.json` decides which `.module` files from the `compose/` directory are loaded, and in which order.
-- Special compose sequences
-    - Unicode input: `♫uu[codepoint hex]<space>` inserts unicode characters, e.g. `♫uu1f574<space>` → 🕴
-    - Roman numerals: `♫rn[zahl]<space>` for lower case, `♫RN[zahl]<space>` for upper case. Numbers must range between 1 and 3999. Example: `♫rn1970<space>` → ⅿⅽⅿⅼⅹⅹ, `♫RN1970<space>` → ⅯⅭⅯⅬⅩⅩ
-- Sticky modifiers: Some compose modifiers (e.g. `ˣ` superscript, `ₓ` subscript, `ⓧ` circling, `𝔵` font variant) keep the sequence open after emitting a character instead of ending it – the next keypress continues at the modifier. Example: `ˣ 1 2 3` gives ¹²³. Exit the modifier either with a key that has no compose entry (types normally again), with `Escape` (discards the whole sequence), or with the modifier itself (silent exit, does not type). **Pitfall:** `x ˣ 2 y` gives `x²ʸ`, not `x²y` – `y` is still typed inside superscript mode. The way out is one more press of the modifier: `x ˣ 2 ˣ y` → `x²y`.
-- `Shift+Pause` de(activates) the program
-- One-handed mode: If mode is enabled and space (default) is held, the whole keyboard is “mirored”. Toggle using tray menu or with shortcut `M3+F10`.
-- Additional layouts can be added or modified in `layouts.json`.
-
-## Layout sheet
-
-Two ways to generate the current key layout as a printable HTML document:
-
-- Tray menu → "Create layout sheet": shows exactly what the running program currently has loaded, and opens the file in the default browser.
-- Command line: `ananeo-tool sheet [layout name]` generates the same sheet without a running AnaNeo, directly from the files in the executable's directory. Without a layout name, a sheet is generated for each layout. `ananeo-tool.exe` is a separate build that links neither Cairo nor the keyboard hook.
-
-The sheet is a single, self-contained HTML file – no external references, usable without a network connection: one keyboard, one tab per layer, switching by click via a small amount of JavaScript. When printing (print preview is enough) or with JavaScript disabled, it instead shows all layers stacked below each other – the print form.
-
-How to read it: an accent bar marks a key that produces a character, with its code point (`U+…`) below; keys without a bar, shown dimmed, are function keys (with their key name), modifiers get a filled background, and dashed outlines mark unassigned positions – the latter are the work list for remapping. The same reading applies to the on-screen keyboard under the `Sachlich` color scheme.
+- **On-screen keyboard**, via the tray menu or `M3+F1`. Follows the modifiers as you press them, names the current layer and block while one is locked, and previews a running compose sequence. Draws characters beyond the Basic Multilingual Plane correctly – chess, alchemy, Mathematical Alphanumeric Symbols – using a bundled symbol font (*Noto Sans Symbols 2*, in `fonts/`, SIL Open Font License 1.1) loaded privately into the process without installing it. Five colour schemes; `Sachlich` is the default and follows the Windows light/dark setting. See the [wiki](https://github.com/reminiscience/AnaNeo/wiki/Configuration-OSK).
+- *All* dead keys and compose sequences, extensible by users: `composeModules` in `config.json` decides which files from `compose/` load, and in which order. AnaNeo adds its own grammar on top – superscript, subscript, enclosed characters and 1021 font variants, derived rather than stored. See the [wiki](https://github.com/reminiscience/AnaNeo/wiki/Compose).
+    - Unicode input: `♫uu[code point in hex]<space>`, e.g. `♫uu1f574<space>` → 🕴
+    - Roman numerals: `♫rn[number]<space>` lower case, `♫RN[number]<space>` upper case, 1 to 3999. `♫rn1970<space>` → ⅿⅽⅿⅼⅹⅹ
+    - Sticky modifiers keep a sequence open: `ˣ 1 2 3` gives ¹²³
+- `Shift+Pause` de(activates) the program.
+- **One-handed mode**: while enabled and the mirror key (space by default) is held, the keyboard is mirrored. Tray menu or `M3+F10`.
+- Layouts can be added and modified in `layouts.json`.
 
 As an extension to the native driver:
 
@@ -103,6 +83,12 @@ As an extension to the native driver:
 - If the native layout is recognized as Neo-related (`kbdneo2.dll`, `kbdgr2.dll`, `kbdnoted.dll`), AnaNeo automatically switches to extension mode. Switching between layouts is possible as normal.
 - Improved compatibility with Qt and GTK applications. Workaround for [this bug](https://git.neo-layout.org/neo/neo-layout/issues/510).
 - Compose key `M3+Tab` does not send tab character to applications. Workaround for [this bug](https://git.neo-layout.org/neo/neo-layout/issues/397).
+
+## Layout sheet
+
+A printable, self-contained HTML sheet of the current key assignment – one keyboard, one tab per layer, and all layers stacked below each other when printed. Two ways to get one: the tray menu entry "Create layout sheet" shows what the running program has loaded, and `ananeo-tool sheet [layout name]` generates it from the files on disk without a running AnaNeo.
+
+An accent bar marks a key that produces a character, with its code point below; dimmed keys are function keys, filled ones are modifiers, and dashed outlines are unassigned positions. The [wiki](https://github.com/reminiscience/AnaNeo/wiki/Layout-Sheet) explains it in full.
 
 ## Configuration
 

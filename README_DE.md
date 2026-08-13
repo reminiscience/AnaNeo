@@ -50,52 +50,32 @@ Neuen Release herunterladen und vorhandene Dateien mit den neuen überschreiben.
 
 ## Funktionen
 
-Allgemein:
-
-- Unterstützt die Layouts *Neo*, *NeoQwertz*, *Noted* und *AnNoted* – AnNoted ist die eigene Variante von Noted mit besonderen Leerzeichen auf der Leertaste; im Erweiterungsmodus gegen `kbdnoted.dll` ist AnNoted aktiv, Noted selbst nur noch im Standalone-Modus wählbar
-- Im Traymenü kann zwischen Layouts gewechselt werden
-- Rastbare Ebenen: Capslock (beide Shift-Tasten), Mod3-Lock (beide Mod3-Tasten), Mod4-Lock (beide Mod4-Tasten) und weitere frei konfigurierbare Rastungen über `"locks"` in der `config.json`. `M3+Esc` löst alle Rastungen. Ist eine Ebene gerastet, wechselt das Tray-Icon die Farbe und der Tooltip nennt die Rastung.
-- Themenebenen: Über die Ebenen 1 bis 4 hinaus gibt es fünf Themenblöcke, jeder mit einem eigenen Block-Modifier (Mod5 bis Mod9). Ein Block wird gerastet (`M3+F2` bis `M3+F6`); bei gerasteter Basis erreichen gehaltenes Shift, Mod3 und Mod4 die weiteren Ebenen des Blocks. Physische Tasten haben Mod5 bis Mod9 nicht – alle Blöcke sind ausschließlich über Rastung erreichbar.
+- Unterstützt die Layouts *Neo*, *NeoQwertz*, *Noted* und *AnNoted*, umschaltbar über das Traymenü. AnNoted ist die eigene Variante von Noted; im Erweiterungsmodus gegen `kbdnoted.dll` ist sie die aktive, Noted selbst nur im Standalone-Modus wählbar.
+- **Rastbare Ebenen**: Capslock (beide Shift-Tasten), Mod3-Lock, Mod4-Lock und jede weitere Rastung, die man über `"locks"` in der `config.json` einrichtet. `M3+Esc` löst alles. Ist eine Ebene gerastet, wechselt das Tray-Icon die Farbe und der Tooltip nennt die Rastung.
+- **Themenebenen**: Über die Ebenen 1 bis 4 hinaus hat *AnNoted* fünf Themenblöcke und eine Modifikator-Ebene – 21 insgesamt. Jeder Block hat einen eigenen Modifier (Mod5 bis Mod9); weil keine physische Taste diese trägt, betritt man einen Block durch Rasten, und gehaltenes Shift, Mod3 oder Mod4 erreichen dann seine weiteren Ebenen.
 
     | Ebenen | Auslöser | Block |
     |---|---|---|
     | 1–4 | – / Shift / Mod3 / Mod4 | wie gewohnt |
-    | 5–8 | Mod5 / +Shift / +Mod3 / +Mod4 | Mathematik und Logik (7 = Hochstellung, 8 = Tiefstellung) |
-    | 9–12 | Mod6 / +Shift / +Mod3 / +Mod4 | Typografie (11/12 tragen drei Compose-Tottasten, Rest weiter Reserve) |
-    | 13–14 | Mod7 / +Shift | Altgriechisch, klein/groß |
-    | 15–16 | Mod8 / +Shift | Kyrillisch (Russisch) |
-    | 17–20 | Mod9 / +Shift / +Mod3 / +Mod4 | Extra: Symbol-Zonen, Emoji (19), Würfel/Alchemie/Technik (20) |
-    | 21 | Mod3+Mod4 | Compose-Modifikatoren, aus **jedem** Rastzustand erreichbar |
+    | 5–8 | `M3+F2` / +Shift / +Mod3 / +Mod4 | Mathematik und Logik (7 = Hochstellung, 8 = Tiefstellung) |
+    | 9–12 | `M3+F3` / +Shift / +Mod3 / +Mod4 | Typografie |
+    | 13–14 | `M3+F4` / +Shift | Altgriechisch, klein/groß |
+    | 15–16 | `M3+F5` / +Shift | Kyrillisch (Russisch) |
+    | 17–20 | `M3+F6` / +Shift / +Mod3 / +Mod4 | Extra: Symbole, Emoji (19), Würfel und Alchemie (20) |
+    | 21 | `Mod3+Mod4` halten | die sechs Compose-Modifikatoren, aus **jedem** Rastzustand erreichbar |
 
-    Ebene 21 trägt auf der Grundreihe die sechs Startzeichen der Compose-Grammatik, jedes auf dem Anfangsbuchstaben seiner Kategorie: `𝔵` Schriftvariante (S), `ⓧ` Einkreisung (E), `↻` Drehung (D), `ₓ` Tiefstellung (T), `˞` Retroflex/Haken (R), `ˣ` Hochstellung (H). Sie ist die einzige Ebene, die sich von der Rastung ausnimmt – wer in einem gerasteten Block `Mod3+Mod4` greift, landet dort statt auf Ebene 1. Beispiel: `Mod3+Mod4`, `S` loslassen, dann `d K` gibt `𝕂`.
+    **Diese Ebenen hat nur *AnNoted*** – *Neo*, *NeoQwertz* und *Noted* bleiben bei ihren sechs veröffentlichten. Die Leertaste trägt auf den Ebenen 3 bis 7 ihre eigene Hierarchie immer schmalerer Leerzeichen.
 
-    Vorgabe-Auslöser: `M3+F2` Mathematik, `M3+F3` Typografie, `M3+F4` Griechisch, `M3+F5` Kyrillisch, `M3+F6` Extra. `M3+F7` schaltet Shift zu oder weg und bleibt damit auf der zweiten Ebene des jeweiligen Blocks.
+    👉 **[Das Wiki dokumentiert jede Ebene](https://github.com/reminiscience/AnaNeo/wiki/Layers)**, eine Seite je Block, mit einem Bild je Ebene.
 
-    Die Leertaste trägt ihre eigene Hierarchie: Ebene 3 geschütztes Leerzeichen, Ebene 4 schmales geschütztes Leerzeichen, Ebene 5 dünnes Leerzeichen, Ebene 6 Haarleerzeichen, Ebene 7 Nullbreiten-Leerzeichen; ab Ebene 8 tippt sie normal. Die Numpad-0 der Ebene 4 liegt dafür auf `w`. Die Compose-Präfixe für Hoch- und Tiefstellung lagen bis zur Grammatikrunde auf der `^`-Taste; sie stehen jetzt zusammen mit den übrigen Modifikatoren auf Ebene 21, und `Mod3`+`^` gibt seitdem nichts mehr aus – die eine Stelle, an der AnNoted bewusst vom Neo-Standard abweicht.
-
-    **Diese Ebenen hat nur das Layout *AnNoted*.** *Neo*, *NeoQwertz* und *Noted* bleiben bei ihren sechs veröffentlichten Ebenen; von den Themen-Auslösern liefern sie nur `M3+F2` aus, und dort heißt die Rastung `Mod3+Mod4`, weil sie die vorhandene Ebene 6 trifft.
-
-    Zwei Folgen dieses Ebenenschnitts in AnNoted: `Shift+Mod3` hat keine eigene Ebene und fällt auf Ebene 1 zurück (`Mod3+Mod4` trifft seit der Grammatikrunde die Modifikator-Ebene 21). Und innerhalb eines gerasteten Blocks führen nur die definierten Erweiterungen (+Shift, bei Mathematik, Typografie und Extra auch +Mod3/+Mod4) auf eine Ebene – alles andere fällt ebenfalls auf Ebene 1 zurück; wer zwischendurch Sonderzeichen oder Navigation braucht, löst die Rastung kurz mit `M3+Esc`.
-- **Bildschirmtastatur**: Wird über Tray-Menü ein- und ausgeschaltet oder per Shortcut `M3+F1`. Wechselt zwischen Ebenen, wenn Modifier gedrückt werden. Solange eine Ebene gerastet ist, steht oben ein Streifen mit der aktuellen Ebene, ihrem Blocknamen und dem Modifier-Satz (»Ebene 13 · Griechisch · Mod7«); läuft zugleich eine Compose-Sequenz, teilt sie sich den Streifen mit ihr. Zeichnet auch Zeichen jenseits der Basic Multilingual Plane vollständig (Schach, Alchemie, Mathematical Alphanumeric Symbols); dafür wird beim Start eine mitgelieferte Symbolschrift (*Noto Sans Symbols 2*, Verzeichnis `fonts/`, Lizenz SIL Open Font License 1.1 in `fonts/OFL.txt`) privat in den Prozess geladen, ohne sie zu installieren. Findet keine Schrift einen passenden Glyphen, zeigt die Taste ersatzweise klein ihren Codepunkt statt eines leeren Kastens. Fünf Farbschemata stehen zur Wahl; Vorgabe ist seit Paket 5b `Sachlich` (hell/dunkel folgt automatisch der Windows-Einstellung) – wer bisher `ColorClassic` (den alten Vorgabewert) eingestellt hatte, bekommt beim nächsten Start automatisch `Sachlich`, ein ausdrücklich gewähltes `ColorGreen` bleibt unangetastet.
-- *Alle* tote Tasten und Compose-Kombinationen. Diese sind auch durch den Nutzer erweiterbar; welche `.module`-Dateien aus dem Verzeichnis `compose/` geladen werden und in welcher Reihenfolge, bestimmt die Liste `composeModules` in der `config.json`.
-- Spezial-Compose-Sequenzen
-    - Unicode-Eingabe: `♫uu[codepoint hex]<space>` fügt Unicode-Zeichen ein. Beispiel: `♫uu1f574<space>` → 🕴
-    - Römische Zahlen: `♫rn[zahl]<space>` für kleine Zahlen, `♫RN[zahl]<space>` für große Zahlen zwischen 1 und 3999. Beispiel: `♫rn1970<space>` → ⅿⅽⅿⅼⅹⅹ, `♫RN1970<space>` → ⅯⅭⅯⅬⅩⅩ
-- Klebrige Modifikatoren: Einige Compose-Modifikatoren (etwa `ˣ` Hochstellung, `ₓ` Tiefstellung, `ⓧ` Einkreisung, `𝔵` Schriftvariante) halten die Sequenz nach der Ausgabe eines Zeichens offen, statt sie zu beenden – der nächste Tastendruck läuft am Modifikator weiter. Beispiel: `ˣ 1 2 3` gibt ¹²³. Man verlässt den Modifikator entweder mit einer Taste ohne Compose-Eintrag (tippt normal weiter), mit `Escape` (verwirft die ganze Sequenz) oder mit dem Modifikator selbst (stummer Ausstieg, tippt sich nicht). **Fallstrick:** `x ˣ 2 y` ergibt `x²ʸ`, nicht `x²y` – das `y` folgt noch im Hochstell-Modus. Der Ausweg ist ein zusätzlicher Anschlag des Modifikators: `x ˣ 2 ˣ y` → `x²y`.
-- `Shift+Pause` (de)aktiviert die Anwendung
-- Einhandmodus: Wenn Modus aktiv ist und Leertaste (Standard) gehalten wird, wird die gesamte Tastatur „gespiegelt“. Umschalten über Tray-Menü oder per Shortcut `M3+F10`.
-- Weitere Layouts können in `layouts.json` hinzugefügt und angepasst werden
-
-## Belegungsblatt
-
-Zwei Wege, die aktuelle Tastenbelegung als druckbares HTML-Dokument zu erzeugen:
-
-- Traymenü → »Belegungsblatt erzeugen«: zeigt genau das, was das laufende Programm gerade geladen hat, und öffnet die Datei im Standardbrowser.
-- Kommandozeile: `ananeo-tool sheet [Layoutname]` erzeugt dasselbe Blatt ohne laufendes AnaNeo, direkt aus den Dateien im EXE-Verzeichnis. Ohne Layoutnamen entsteht ein Blatt je Layout. `ananeo-tool.exe` ist ein eigenes Kompilat, das weder Cairo noch den Tastaturhook linkt.
-
-Das Blatt ist eine einzige, in sich geschlossene HTML-Datei – ohne externe Verweise, auch ohne Netzverbindung nutzbar: eine Tastatur, ein Reiter je Ebene, Wechsel per Klick über etwas JavaScript. Beim Drucken (Druckvorschau genügt) oder mit abgeschaltetem JavaScript zeigt es stattdessen alle Ebenen untereinander – die Druckform.
-
-Zur Lesart: Ein Akzentbalken markiert eine Taste, die ein Zeichen erzeugt, darunter steht ihr Codepunkt (`U+…`); ohne Balken und gedämpft dargestellt sind Funktionstasten (mit ihrem Tastennamen), flächig hinterlegt die Modifier, gestrichelt die unbelegten Positionen – Letztere sind beim Umbelegen die Arbeitsliste. Dieselbe Lesart gilt für die Bildschirmtastatur unter dem Farbschema `Sachlich`.
+- **Bildschirmtastatur**, über das Traymenü oder `M3+F1`. Folgt den gedrückten Modifiern, nennt bei gerasteter Ebene deren Nummer und Blocknamen und zeigt eine laufende Compose-Sequenz in der Vorschau. Zeichnet auch Zeichen jenseits der Basic Multilingual Plane vollständig – Schach, Alchemie, Mathematical Alphanumeric Symbols – über eine mitgelieferte Symbolschrift (*Noto Sans Symbols 2*, in `fonts/`, SIL Open Font License 1.1), die privat in den Prozess geladen und nicht installiert wird. Fünf Farbschemata; Vorgabe ist `Sachlich`, hell/dunkel folgt der Windows-Einstellung. Siehe [Wiki](https://github.com/reminiscience/AnaNeo/wiki/Configuration-OSK).
+- *Alle* toten Tasten und Compose-Kombinationen, durch Nutzer erweiterbar: Die Liste `composeModules` in der `config.json` bestimmt, welche Dateien aus `compose/` geladen werden und in welcher Reihenfolge. AnaNeo legt eine eigene Grammatik darüber – Hoch- und Tiefstellung, Einkreisung und 1021 Schriftvarianten, hergeleitet statt gespeichert. Siehe [Wiki](https://github.com/reminiscience/AnaNeo/wiki/Compose).
+    - Unicode-Eingabe: `♫uu[Codepunkt hex]<space>`, Beispiel `♫uu1f574<space>` → 🕴
+    - Römische Zahlen: `♫rn[Zahl]<space>` klein, `♫RN[Zahl]<space>` groß, 1 bis 3999. `♫rn1970<space>` → ⅿⅽⅿⅼⅹⅹ
+    - Klebrige Modifikatoren halten die Sequenz offen: `ˣ 1 2 3` gibt ¹²³
+- `Shift+Pause` (de)aktiviert die Anwendung.
+- **Einhandmodus**: Ist er aktiv und wird die Spiegeltaste (standardmäßig die Leertaste) gehalten, spiegelt sich die ganze Tastatur. Traymenü oder `M3+F10`.
+- Weitere Layouts können in `layouts.json` hinzugefügt und angepasst werden.
 
 Als Erweiterung zum nativen Treiber:
 
@@ -103,6 +83,12 @@ Als Erweiterung zum nativen Treiber:
 - Wird das native Layout als Neo-verwandt erkannt (`kbdneo2.dll`, `kbdgr2.dll`, `kbdnoted.dll`), schaltet AnaNeo automatisch in den Erweiterungs-Modus. Umschalten zwischen Layouts ist ganz normal möglich.
 - Verbesserte Kompatibilität mit Qt- und GTK-Anwendungen. Workaround für [diesen Bug](https://git.neo-layout.org/neo/neo-layout/issues/510).
 - Compose-Taste `M3+Tab` sendet keinen Tab mehr an Anwendung. Workaround für [diesen Bug](https://git.neo-layout.org/neo/neo-layout/issues/397).
+
+## Belegungsblatt
+
+Ein druckbares, in sich geschlossenes HTML-Blatt der aktuellen Belegung – eine Tastatur, ein Reiter je Ebene, beim Drucken alle Ebenen untereinander. Zwei Wege dorthin: der Traymenü-Eintrag »Belegungsblatt erzeugen« zeigt, was das laufende Programm geladen hat, und `ananeo-tool sheet [Layoutname]` erzeugt es ohne laufendes AnaNeo aus den Dateien auf der Platte.
+
+Ein Akzentbalken markiert eine Taste, die ein Zeichen erzeugt, darunter steht ihr Codepunkt; gedämpfte Tasten sind Funktionstasten, flächige die Modifier, gestrichelte die unbelegten Positionen. Das [Wiki](https://github.com/reminiscience/AnaNeo/wiki/Layout-Sheet) erklärt es vollständig.
 
 ## Konfiguration
 
