@@ -4,6 +4,8 @@
 
 > **AnaNeo is a fork of [ReNeo](https://github.com/Rojetto/ReNeo)** by Rojetto and qwertfisch. Most of the code originates from ReNeo and is licensed under GPL-3.0, as before. AnaNeo is a private project made public – see [About this fork](#about-this-fork) before you rely on it.
 
+📖 **[The wiki](https://github.com/reminiscience/AnaNeo/wiki)** documents all 21 layers – one page per themed block, with a picture of every layer – and the complete configuration space.
+
 AnaNeo implements the [Neo keyboard layout](http://neo-layout.org/) and its relatives on Windows. There are two main modes of operation:
 1. *standalone mode*: AnaNeo replaces all key events of the native layout (likely QWERTZ or QWERTY) with the desired Neo layout. You only need to run the AnaNeo executable on system startup.
 2. *extension mode*: First, install a native Neo driver like [kbdneo](https://neo-layout.org/Einrichtung/kbdneo/). AnaNeo then supplements all functions that can't be implemented in the native driver (capslock, navigation keys on layer 4, compose, ...).
@@ -104,7 +106,7 @@ As an extension to the native driver:
 
 ## Configuration
 
-AnaNeo can be configured with two files.
+AnaNeo can be configured with two files. What follows is the reference; the [wiki](https://github.com/reminiscience/AnaNeo/wiki/Configuration) covers the same ground in more depth, with the pitfalls.
 
 ### General Configuration
 
