@@ -1,0 +1,25 @@
+name: CI
+on:
+  pull_request:
+    branches: [develop, master]
+    paths-ignore: ['**.md', 'docs/**']
+  push:
+    branches: [master]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:
+jobs:
+  build-test-lint:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up D compiler
+        uses: dlang-community/setup-dlang@v2
+      - name: Build
+        run: dub build
+      - name: Build tool
+        run: dub build --config=tool
+      - name: Run unit tests
+        run: dub test
+      - name: Run linter
+        run: dub lint

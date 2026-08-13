@@ -24,15 +24,19 @@ For each modifier type, it is stored which scancodes currently press this modifi
 
 ## Determine current level
 
-Based on the **natural modifier state**, the current level is determined. The levels in `"layers"` are tested one after the other, and the first matching one is adopted.
+The **natural modifier state** and the **locked modifier set** together yield the *effective* state: a modifier counts as active if it is held **or** locked, but not both – which makes it possible to leave a locked layer briefly by holding the key. If programs see the Neo modifiers themselves (extension mode with `filterNeoModifiers: false`), a plain OR applies instead, because the native driver switches the layer on the real key event anyway. On that basis the levels in `"layers"` are tested one after the other, and the first matching one is adopted. An entry that does not mention a currently locked modifier is skipped – otherwise level 1 would shadow every locked additional level.
 
-In addition, there is the logic for Capslock and Mod4-Lock. Due to the many special cases, this logic is hardcoded and cannot be adapted in the layout.
+Capslock comes afterwards and only under narrow conditions: the key must be listed in `"capslockableKeys"`, no lock may be active and no Neo modifier may be held. The level is then determined again with the Shift state inverted. For the shipped layouts this is the swap between levels 1 and 2. On locked layers Capslock stays silent; upper/lower case switching there is handled by a Shift trigger with `"mode": "toggle"`.
+
+The logic lives entirely in `source/layerlock.d`, where it is unit tested without any Win32 state. Which chords lock something is configured under `"locks"` in `config.json`.
 
 With the current level and the pressed scancode, the NeoKey is then derived from the mapping.
 
 ## Compose
 
 The entry point to the Compose module is the `compose` function, which is passed the current NeoKey for each key press. The core of the module is the **Compose tree**, whose branches are then followed during a Compose sequence. Depending on the resulting Compose state, the function responds with a Compose state. Thus, the keypress is either passed through unchanged in the Hook function, swallowed (because it is part of a Compose sequence), or replaced by the Compose result at the end of a Compose sequence.
+
+Which module files fill the tree is decided by the positive list `composeModules` in the configuration; the order of the list is the loading order. The `.remove` files are read first – those of the selected modules plus those that have no module at all, since those belong to built-in special routines such as Unicode input. The modules themselves follow. For every sequence, `addComposeEntry` reports back what happened to it: newly added, overwritten as an exact duplicate, or discarded as an extension or a prefix of an existing sequence. From this, `initCompose` writes a report to the debug log once loading finishes – counters per module file plus the individual cases.
 
 ## Sending key events
 
@@ -134,7 +138,7 @@ Native keyboard drivers support arbitrarily long dead key sequences. Typically, 
 
 In *kbdneo*, only a small fraction of the Compose sequences are defined. Also, [the Compose key `M3+Tab` still reaches programs](https://git.neo-layout.org/neo/neo-layout/issues/397).
 
-**Workaround**: As soon as ReNeo recognizes the beginning of a Compose sequence, the corresponding key events are filtered out, and internally the Compose tree is followed until the end of the sequence is reached. Then, only the finished character(s) are sent as (a sequence of) Unicode packets.
+**Workaround**: As soon as AnaNeo recognizes the beginning of a Compose sequence, the corresponding key events are filtered out, and internally the Compose tree is followed until the end of the sequence is reached. Then, only the finished character(s) are sent as (a sequence of) Unicode packets.
 
 ### Identifying Dead Keys
 In Standalone mode, we try to find the desired characters with `VkKeyScanEx` in the native layout and implement them as native key combinations. However, this is problematic for keys like the backtick "`" or the circumflex "^" on level 3. These keys should immediately generate a character but are often present as dead keys in native layouts. The exception is the DE-CH layout, where the circumflex is not a dead key.
@@ -143,7 +147,7 @@ In Standalone mode, we try to find the desired characters with `VkKeyScanEx` in 
 
 ## Native Layouts
 ### Detecting Layout Changes
-We want to detect layout changes in Windows in order to automatically switch between Extension mode and Standalone mode, or to (de)activate ReNeo. Unfortunately, there are no direct global events for this.
+We want to detect layout changes in Windows in order to automatically switch between Extension mode and Standalone mode, or to (de)activate AnaNeo. Unfortunately, there are no direct global events for this.
 
 **Workaround**: We register a hook to listen for window changes. When the window has changed, we check *on the next key press* the current layout with `GetKeyboardLayout`. If you change the layout with Win+Space, Ctrl+Shift, or Alt+Shift, it happens immediately since the popup with the layout selection is considered a window change. If you use Shift+Ctrl or Shift+Alt instead, the hook is not triggered, and you need to manually switch windows for the hook to activate.
 
@@ -151,3 +155,62 @@ We want to detect layout changes in Windows in order to automatically switch bet
 In certain terminals, such as the classic console, `GetKeyboardLayout` returns `null` for the console thread. Calls like `VkKeyScan` also return incorrect results in these windows, as internally some strange legacy layout is assumed.
 
 **Workaround**: We cache the last seen "meaningful" layout and ignore layout changes when the new layout is `null`. For calls like `VkKeyScan`, we use the `VkKeyScanEx` variant and explicitly pass the cached, meaningful layout.
+
+
+## Glyph Output (On-Screen Keyboard and Layout Sheet)
+Since package 5b, the on-screen keyboard draws labels via `cairo_show_glyphs` instead of `cairo_show_text`, because characters beyond the Basic Multilingual Plane (BMP) break otherwise. Getting there involved three traps, each of them silently wrong – none of them fails with an error.
+
+### UTF-16 code units instead of code points
+`GetGlyphIndices` and Cairo's Win32 text path (used internally by `cairo_show_text`) both operate on UTF-16 **code units**, not code points. A character beyond the BMP consists of a surrogate pair, i.e. two code units; only the first one, the high half, gets looked up – which is not a valid character on its own. The result is the tofu box, indistinguishable from a character the font genuinely doesn't have.
+
+**Workaround**: obtain glyph indices yourself, at the code-point level, and draw with `cairo_show_glyphs` (`source/fontchain.d`, `source/osk.d`).
+
+### GDI is not an option
+The obvious way out would have been direct GDI output (`ExtTextOutW`) – GDI understands code points, so the problem above wouldn't apply. It fails for a different reason: the on-screen keyboard is a layered window, drawn via `UpdateLayeredWindow` with `ULW_ALPHA`. GDI does not write the alpha channel; text drawn via GDI would be invisible or corrupted. Cairo rasterizes itself and writes alpha correctly – which is why Cairo stays in the picture despite the code-unit problem above.
+
+### Uniscribe: `S_OK` is not success
+The obvious way to get glyph indices at the code-point level is Uniscribe (`usp10.dll`): `ScriptGetCMap` takes a UTF-16 string **with a length** and can therefore handle surrogate pairs correctly. It was built first – then measured against ten installed fonts and ten code points beyond the BMP, with a throwaway console program. Result: `ScriptGetCMap` returns a real glyph for a character beyond the BMP in **none** of the ten fonts – either `S_FALSE`, or `S_OK` with the blank glyph. Even the bundled font answered this way for its own target character (chess, U+1FA00). `S_OK` proves nothing here; a caller that only checks the return value mistakes a failure for a success.
+
+The glyph is genuinely present in the font, though – read directly, the `cmap` table of Segoe UI Symbol carries glyph 7721 for U+1D504, for example. The Uniscribe call simply fails to find it. The second Uniscribe route (`ScriptItemize` + `ScriptShape`) only succeeds with shaping switched off (the documented fallback to `eScript = SCRIPT_UNDEFINED`) and fails for the bundled font even on a BMP character (`USP_E_SCRIPT_NOT_IN_FONT`).
+
+**Decision**: Uniscribe is dropped entirely. `source/cmap.d` reads a font's `cmap` table (format 12, otherwise format 4) directly from the bytes `GetFontData` returns – plain byte arithmetic, no Win32 call with an ambiguous answer. Measured: the same glyph as via Uniscribe in all 100 checked combinations, wherever Uniscribe returned one at all. Side benefit: a cmap reader can be tested against a font file that lives in the repo (`fonts/NotoSansSymbols2-Regular.ttf`), even where no Windows fonts are installed (`tools/verify-linux.sh` under Wine) – Uniscribe would not have been testable there at all.
+
+### Light/dark without `prefers-color-scheme`
+A Win32 window has no equivalent of `prefers-color-scheme` – unlike the layout sheet (an HTML page), the on-screen keyboard cannot simply query a media query. The `Sachlich` color scheme therefore reads the registry value `AppsUseLightTheme` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` once at startup and again on every `WM_SETTINGCHANGE` (Windows reports the switch between light and dark app mode through that message) – the only practical way to catch a live switch without querying the registry on every draw.
+
+## Base Layers and Character Keys
+
+On layers 1 and 2, letters, digits, and most punctuation deliberately exist as a **VK mapping**, not a char mapping. The reason is not convenience but necessity: a VK mapping lets Windows see a real keypress (`VK_KEY_E` instead of a Unicode packet for "e"). Only that keeps keyboard shortcuts working that rely on *which key was pressed* rather than on the character it produces – Ctrl+C, Alt+Tab, practically every game. A char mapping sends a Unicode packet instead; to a program listening for `VK_KEY_C` held with Ctrl, a key that merely types "c" is invisible. **Switching a base-layer key to `"char"` makes it blind to exactly those shortcuts.** This is not a rendering detail but a property of the layout data, and package 5c does not touch it anywhere.
+
+For the *display* (on-screen keyboard, layout sheet), the VK-versus-char distinction is nonetheless the wrong question. What matters is what actually comes out when the key is typed, not how the layout encodes it internally. Since package 5c, `keyboardview.describeKey` answers that via the **keysym**: if `keysymdef.h` assigns a Unicode code point to a VK mapping's keysym (`keysyms.codepointsByKeysym`), the key produces a character and is drawn as one, regardless of the mapping type. A VK key with forced modifiers (`"mods"`) is exempt – it sends a shortcut like Ctrl+Z no matter what its keysym says.
+
+The numpad is a case of its own here: `keysymdef.h` assigns no code point to the `KP_` keysyms, even though most of these keys do produce characters. `keyboardview.keypadChar` covers that with a small fixed table – and deliberately returns the **produced** character, not the label. The numpad's multiply key is labelled "×" (U+00D7) but types "*" (U+002A); the divide key is labelled "÷" (U+00F7) but types "/" (U+002F). Deriving the code point from the label instead of the table would print a falsehood on the sheet – visually unremarkable, since both characters serve the same purpose, but technically wrong.
+
+## Compose Grammar
+
+Since the grammar round the project's own compose entries follow one rule: **a sequence starts with a modifier, then comes the base.** The modifier says *what* happens to the character, the base says *to which one*. Two conditions follow that every own table must satisfy: (1) a node on the way to the base carries **no** result of its own – otherwise it would be a dead end and the sequence could not be extended; (2) the base is a **single character**, so the branch reads uniformly.
+
+There are six modifiers, each on layer 21 of `AnNoted`, on the initial letter of its category:
+
+| Character | Code point | Key | Category |
+|---|---|---|---|
+| `𝔵` | U+1D535 | S | font variant (Schriftvariante) |
+| `ⓧ` | U+24E7 | E | enclosure (Einkreisung) |
+| `↻` | U+21BB | D | rotation (Drehung) |
+| `ₓ` | U+2093 | T | subscript (Tiefstellung) |
+| `˞` | U+02DE | R | retroflex hook |
+| `ˣ` | U+02E3 | H | superscript (Hochstellung) |
+
+Layer 21 hangs off `Mod3+Mod4` and carries the marker `"ignoreLocks": true` in `layouts.json`. Without it the layer would be unreachable inside any locked block: `layerlock.determineLayer` discards a layer that does not mention a currently locked Neo modifier at all ("locked-not-don't-care"), and layer 21 deliberately does not mention the block modifiers. It still shadows nothing, because it is the **last** entry and requires `Mod3` and `Mod4` together – a combination no earlier layer matches. The trigger `{"chord": "Mod3+Tab", "action": "compose"}` exists for the same reason: a trigger runs before layer determination, whereas the `Multi_key` on layer 3 of the Tab key is lost whenever a layer is locked.
+
+**The font table is computed, not maintained.** `compose/ananeo-schrift.module` (1,016 entries under `𝔵`) is generated from `source/schriftvarianten.d` via `ananeo-tool compose gen-schrift`; a guard test keeps file and computation together. Each line reads `<U1D535> <family letter> [<slash>] <base> : "character" UXXXX` – an upper-case family letter means bold, a `/` before the base means italic (`a` antiqua, `s` script, `r` fraktur, `d` double-struck, `l` sans-serif, `m` monospace). Characters are written as `<UXXXX>` rather than as named keysyms, so the file does not depend on `keysymdef.h` and Latin, Greek, and the variant forms all take the same shape.
+
+Two peculiarities of the Unicode block are baked into the computation and cannot be derived: **24 slots are missing from the block** because the character lives in "Letterlike Symbols" (`ℬ`, `ℭ`, `ℂ`, …, and U+210E is named PLANCK CONSTANT) – they are listed in `ausnahme()`. And the **58 Greek base slots** follow a fixed order with foreign bodies in it: the theta symbol `ϴ` sits among the capitals, nabla `∇` and the partial differential `∂` sit in the middle of the run. Guessing the order yields code points that are all assigned but all wrong – hence the watchdog against UCD 17.0.0 in the same module.
+
+## Privilege Levels
+### Elevated Windows
+Windows does not let a low-level keyboard hook from a non-elevated process affect windows belonging to an elevated process (User Interface Privilege Isolation). If AnaNeo runs without administrator rights, it therefore has no effect in a terminal, editor, or installer started as administrator – with no error message, no log entry, and no change to the tray icon.
+
+In extension mode this is easy to notice too late: there the native driver (`kbdnoted.dll` and relatives) does the layer work at driver level, and UIPI does not apply to it. So in an elevated window the usual characters keep appearing, while everything AnaNeo itself contributes – compose, capslock, layer 4 navigation, sending characters beyond the BMP – silently fails. In standalone mode there is no driver to step in; there, nothing happens at all.
+
+**Workaround**: None in code. Anyone who wants to use AnaNeo with elevated windows has to start AnaNeo elevated as well. More important is the consequence for testing: **manual tests belong in a non-elevated window.** A result from an administrator terminal is worthless, and in both directions – a keystroke passed through unchanged looks exactly like a correctly processed one.

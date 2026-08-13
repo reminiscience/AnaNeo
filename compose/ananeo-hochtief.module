@@ -1,0 +1,130 @@
+# Hoch- und Tiefstellung ueber die Compose-Praefixe der ^-Taste im
+# Mathe-Block von AnNoted: <U02E3> ist das Hochstell-Praefix (x-hoch),
+# <U2093> das Tiefstell-Praefix (x-tief). Seit der Inhaltsrunde vollstaendig:
+# 70 Hochstellungen und 37 Tiefstellungen - alles, was Unicode 17.0.0 ueber
+# das Zerlegungsfeld fuehrt. HANDGEPFLEGT; ein Waechter in
+# source/composeaudit.d prueft jede Zeile gegen die UCD.
+#
+# Klebrig: nach einer Ausgabe geht es am Modifikator weiter, bis eine
+# Taste ohne Eintrag, der Modifikator selbst oder Escape kommt.
+#klebrig <U02E3>
+#klebrig <U2093>
+
+<U02E3> <0> : "⁰"   U2070
+<U02E3> <1> : "¹"   onesuperior
+<U02E3> <2> : "²"   twosuperior
+<U02E3> <3> : "³"   threesuperior
+<U02E3> <4> : "⁴"   U2074
+<U02E3> <5> : "⁵"   U2075
+<U02E3> <6> : "⁶"   U2076
+<U02E3> <7> : "⁷"   U2077
+<U02E3> <8> : "⁸"   U2078
+<U02E3> <9> : "⁹"   U2079
+<U02E3> <plus> : "⁺"   U207A
+<U02E3> <minus> : "⁻"   U207B
+<U02E3> <equal> : "⁼"   U207C
+<U02E3> <parenleft> : "⁽"   U207D
+<U02E3> <parenright> : "⁾"   U207E
+<U02E3> <n> : "ⁿ"   U207F
+<U02E3> <i> : "ⁱ"   U2071
+
+# hoch, Kleinbuchstaben (n und i stehen oben im Startbestand)
+<U02E3> <a> : "ᵃ"   U1D43
+<U02E3> <b> : "ᵇ"   U1D47
+<U02E3> <c> : "ᶜ"   U1D9C
+<U02E3> <d> : "ᵈ"   U1D48
+<U02E3> <e> : "ᵉ"   U1D49
+<U02E3> <f> : "ᶠ"   U1DA0
+<U02E3> <g> : "ᵍ"   U1D4D
+<U02E3> <h> : "ʰ"   U02B0
+<U02E3> <j> : "ʲ"   U02B2
+<U02E3> <k> : "ᵏ"   U1D4F
+<U02E3> <l> : "ˡ"   U02E1
+<U02E3> <m> : "ᵐ"   U1D50
+<U02E3> <o> : "ᵒ"   U1D52
+<U02E3> <p> : "ᵖ"   U1D56
+<U02E3> <q> : "𐞥"   U107A5
+<U02E3> <r> : "ʳ"   U02B3
+<U02E3> <s> : "ˢ"   U02E2
+<U02E3> <t> : "ᵗ"   U1D57
+<U02E3> <u> : "ᵘ"   U1D58
+<U02E3> <v> : "ᵛ"   U1D5B
+<U02E3> <w> : "ʷ"   U02B7
+<U02E3> <x> : "ˣ"   U02E3
+<U02E3> <y> : "ʸ"   U02B8
+<U02E3> <z> : "ᶻ"   U1DBB
+
+# hoch, Grossbuchstaben (X Y Z fuehrt Unicode nicht)
+<U02E3> <A> : "ᴬ"   U1D2C
+<U02E3> <B> : "ᴮ"   U1D2E
+<U02E3> <C> : "ꟲ"   UA7F2
+<U02E3> <D> : "ᴰ"   U1D30
+<U02E3> <E> : "ᴱ"   U1D31
+<U02E3> <F> : "ꟳ"   UA7F3
+<U02E3> <G> : "ᴳ"   U1D33
+<U02E3> <H> : "ᴴ"   U1D34
+<U02E3> <I> : "ᴵ"   U1D35
+<U02E3> <J> : "ᴶ"   U1D36
+<U02E3> <K> : "ᴷ"   U1D37
+<U02E3> <L> : "ᴸ"   U1D38
+<U02E3> <M> : "ᴹ"   U1D39
+<U02E3> <N> : "ᴺ"   U1D3A
+<U02E3> <O> : "ᴼ"   U1D3C
+<U02E3> <P> : "ᴾ"   U1D3E
+<U02E3> <Q> : "ꟴ"   UA7F4
+<U02E3> <R> : "ᴿ"   U1D3F
+<U02E3> <S> : "꟱"   UA7F1
+<U02E3> <T> : "ᵀ"   U1D40
+<U02E3> <U> : "ᵁ"   U1D41
+<U02E3> <V> : "ⱽ"   U2C7D
+<U02E3> <W> : "ᵂ"   U1D42
+
+# hoch, Griechisch
+<U02E3> <Greek_beta> : "ᵝ"   U1D5D
+<U02E3> <Greek_gamma> : "ᵞ"   U1D5E
+<U02E3> <Greek_delta> : "ᵟ"   U1D5F
+<U02E3> <Greek_theta> : "ᶿ"   U1DBF
+<U02E3> <Greek_phi> : "ᵠ"   U1D60
+<U02E3> <Greek_chi> : "ᵡ"   U1D61
+
+<U2093> <0> : "₀"   U2080
+<U2093> <1> : "₁"   U2081
+<U2093> <2> : "₂"   U2082
+<U2093> <3> : "₃"   U2083
+<U2093> <4> : "₄"   U2084
+<U2093> <5> : "₅"   U2085
+<U2093> <6> : "₆"   U2086
+<U2093> <7> : "₇"   U2087
+<U2093> <8> : "₈"   U2088
+<U2093> <9> : "₉"   U2089
+<U2093> <plus> : "₊"   U208A
+<U2093> <minus> : "₋"   U208B
+<U2093> <equal> : "₌"   U208C
+<U2093> <parenleft> : "₍"   U208D
+<U2093> <parenright> : "₎"   U208E
+
+# tief, Kleinbuchstaben (b c d f g q w y z fuehrt Unicode nicht)
+<U2093> <a> : "ₐ"   U2090
+<U2093> <e> : "ₑ"   U2091
+<U2093> <h> : "ₕ"   U2095
+<U2093> <i> : "ᵢ"   U1D62
+<U2093> <j> : "ⱼ"   U2C7C
+<U2093> <k> : "ₖ"   U2096
+<U2093> <l> : "ₗ"   U2097
+<U2093> <m> : "ₘ"   U2098
+<U2093> <n> : "ₙ"   U2099
+<U2093> <o> : "ₒ"   U2092
+<U2093> <p> : "ₚ"   U209A
+<U2093> <r> : "ᵣ"   U1D63
+<U2093> <s> : "ₛ"   U209B
+<U2093> <t> : "ₜ"   U209C
+<U2093> <u> : "ᵤ"   U1D64
+<U2093> <v> : "ᵥ"   U1D65
+<U2093> <x> : "ₓ"   U2093
+
+# tief, Griechisch
+<U2093> <Greek_beta> : "ᵦ"   U1D66
+<U2093> <Greek_gamma> : "ᵧ"   U1D67
+<U2093> <Greek_rho> : "ᵨ"   U1D68
+<U2093> <Greek_phi> : "ᵩ"   U1D69
+<U2093> <Greek_chi> : "ᵪ"   U1D6A

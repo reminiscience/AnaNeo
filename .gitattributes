@@ -1,0 +1,12 @@
+# Zeilenenden im Index immer LF, im Arbeitsverzeichnis plattformueblich
+* text=auto
+
+# Binaerdateien nie anfassen
+*.png    binary
+*.ico    binary
+*.res    binary
+*.dll    binary
+*.lib    binary
+*.pdb    binary
+*.zip    binary
+*.ttf    binary

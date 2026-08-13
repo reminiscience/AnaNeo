@@ -3,8 +3,19 @@
 *.exe
 *.o
 *.obj
+*.pdb
 *.lst
 *.zip
 /*.dll
 config.json
+ananeo-belegung-*.html
 /source/gen/packageVersion.d
+.superpowers/
+.claude/
+# Interne Arbeitsdokumente - bleiben lokal, gehoeren nicht ins oeffentliche Repo
+CLAUDE.md
+STATUS.md
+MASTERPLAN.md
+docs/superpowers/
+# Debug-Log des debug-log-Builds - enthaelt Tastatureingaben
+ananeo_log.txt

@@ -338,8 +338,6 @@
 # non-IPA Sinologist letters (to be included?)
 <U21BB> <Multi_key> <r> <underscore>              : "ɿ" U027F # LATIN SMALL LETTER REVERSED R WITH FISHHOOK
 <U21BB> <Multi_key> <s> <h>                       : "ʅ" U0285 # LATIN SMALL LETTER SQUAT REVERSED ESH
-<dead_hook> <U21BB> <h>                           : "ʮ" U02AE # LATIN SMALL LETTER TURNED H WITH FISHHOOK
-<dead_dasia> <dead_hook> <U21BB> <h>              : "ʯ" U02AF # LATIN SMALL LETTER TURNED H WITH FISHHOOK AND TAIL
 
 # Vietnamese language
 <dead_psili> <A>                                  : "Ả" U1EA2 # LATIN CAPITAL LETTER A WITH HOOK ABOVE

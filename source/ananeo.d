@@ -1,20 +1,28 @@
-module reneo;
+module ananeo;
 
-import std.stdio;
 import std.utf;
-import std.regex;
 import std.conv;
-import std.path;
 import std.format;
 import std.array;
-import std.datetime.systime;
 import std.algorithm.mutation : remove;
 
 import core.sys.windows.windows;
 
 import mapping;
+import layerlock;
 import composer;
-import app : configAutoNumlock, configEnableMod4Lock, configFilterNeoModifiers, configOneHandedModeMirrorKey, configOneHandedModeMirrorMap, updateOSKAsync, toggleOSK, toggleOneHandedMode, lastInputLocale;
+import debuglog;
+import keysyms;
+import app : configAutoNumlock, configLockTriggers, configFilterNeoModifiers, configOneHandedModeMirrorKey, configOneHandedModeMirrorMap, updateOSKAsync, updateLockStateAsync, updateComposeStateAsync, toggleOSK, toggleOneHandedMode, lastInputLocale;
+
+// Letzter an die Anzeige gemeldeter Compose-Zustand. Das Tripel faengt alle
+// Uebergaenge: Start (PASS -> aktiv), Fortschritt (Knoten wechselt),
+// Sondermodus-Eingabe (Puffer waechst) und Ende (FINISH/ABORT setzen aktiv
+// zurueck) - ohne den letzten Fall bliebe das Overlay nach dem Ergebnis
+// stehen, bis zufaellig ein Ebenenwechsel neu zeichnet (Spec 4.3).
+private bool previousComposeActive;
+private const(ComposeNode)* previousComposeNode;
+private size_t previousComposeBufferLen;
 
 const SC_FAKE_LSHIFT = 0x22A;
 const SC_FAKE_RSHIFT = 0x236;
@@ -31,10 +39,6 @@ Scancode scanNumlock = Scancode(0x45, true);
 
 Scancode[Modifier] SCANCODE_BY_MODIFIER;
 
-version(FileLogging) {
-    File logFile;
-}
-
 static this() {
     SCANCODE_BY_MODIFIER = [
         Modifier.LSHIFT: Scancode(0x2A, false),
@@ -44,96 +48,6 @@ static this() {
         Modifier.LALT: Scancode(0x38, false),
         Modifier.RALT: Scancode(0x38, true)
     ];
-
-    version(FileLogging) {
-        logFile = File("reneo_log.txt", "a+");
-    }
-}
-
-void debugWriteln(T...)(T args) nothrow {
-    debug {
-        writeln(args);
-    }
-
-    version(FileLogging) {
-        try {
-        auto currTime = Clock.currTime();
-        string timeString = format("%04d-%02d-%02d %02d:%02d:%02d.%03d ", currTime.year(), currTime.month(), currTime.day(), currTime.hour(), currTime.minute(), currTime.second(), cast(int) currTime.fracSecs().total!"msecs");
-        logFile.writeln(timeString, args);
-        logFile.flush();  // flush immediately in case we crash
-        } catch (Exception e) {}
-    }
-}
-
-uint[string] keysymsByName;
-uint[uint] keysymsByCodepoint;
-uint[uint] codepointsByKeysym;
-const KEYSYM_CODEPOINT_OFFSET = 0x01000000;
-
-// Initializes list of keysyms by a given keysymdef.h from X.org project,
-// see https://cgit.freedesktop.org/xorg/proto/x11proto/tree/keysymdef.h
-void initKeysyms(string exeDir) {
-    auto keysymfile = buildPath(exeDir, "keysymdef.h");
-    debugWriteln("Initializing keysyms from ", keysymfile);
-    // group 1: name, group 2: hex, group 3: unicode codepoint
-    auto unicodePattern = r"^\#define XK_([a-zA-Z_0-9]+)\s+0x([0-9a-fA-F]+)\s*\/\*[ \(]U\+([0-9a-fA-F]{4,6}) (.*)[ \)]\*\/\s*$";
-    // group 1: name, group 2: hex, group 3 and 4: comment stuff
-    auto noUnicodePattern = r"^\#define XK_([a-zA-Z_0-9]+)\s+0x([0-9a-fA-F]+)\s*(\/\*\s*(.*)\s*\*\/)?\s*$";
-    keysymsByName.clear();
-    keysymsByCodepoint.clear();
-    codepointsByKeysym.clear();
-
-    File f = File(keysymfile, "r");
-	while(!f.eof()) {
-		string l = f.readln();
-        try {
-            if (auto m = matchFirst(l, unicodePattern)) {
-                string keysymName = m[1];
-                uint keyCode = to!uint(m[2], 16);
-                uint codepoint = to!uint(m[3], 16);
-                keysymsByName[keysymName] = keyCode;
-                keysymsByCodepoint[codepoint] = keyCode;
-                // for quick reverse search
-                codepointsByKeysym[keyCode] = codepoint;
-            } else if (auto m = matchFirst(l, noUnicodePattern)) {
-                string keysymName = m[1];
-                uint keyCode = to!uint(m[2], 16);
-                keysymsByName[keysymName] = keyCode;
-            }
-        } catch (Exception e) {
-            debugWriteln("Could not parse line '", l, "', skipping. Error: ", e.msg);
-        }
-	}
-}
-
-auto UNICODE_REGEX = regex(r"^U([0-9a-fA-F]+)$");
-
-// Parse a string by a lookup in the initialized keysym tables, either by name
-// or by codepoint. The latter works also for algorithmically defined strings
-// in the form "U00A0" to "U10FFFF" which represent any possible Unicode
-// character as hex value.
-uint parseKeysym(string keysymStr) {
-    if (uint *keysym = keysymStr in keysymsByName) {
-        // The corresponding keysym is explicitly defined by the given name
-        return *keysym;
-    } else if (auto m = matchFirst(keysymStr, UNICODE_REGEX)) {
-        uint codepoint = to!uint(m[1], 16);
-
-        // Legacy keysyms for some Unicode values between 0x0100 and 0x30FF
-        if (codepoint <= 0x30FF) {
-            if (uint *keysym = codepoint in keysymsByCodepoint) {
-                // If defined, return the legacy keysym value
-                return *keysym;
-            }
-        }
-
-        // Otherwise just return the keysym matching the codepoint with an offset
-        return codepoint + KEYSYM_CODEPOINT_OFFSET;
-    }
-
-    debugWriteln("Keysym ", keysymStr, " not found.");
-
-    return KEYSYM_VOID;
 }
 
 void sendVK(uint vk, Scancode scan, bool down) nothrow {
@@ -156,6 +70,17 @@ void sendUTF16(wchar unicodeChar, bool down) nothrow {
     }
 
     SendInput(1, &inputStruct, INPUT.sizeof);
+}
+
+/// Eine ganze Zeichenkette als Unicode-Pakete senden. Zeichen jenseits der BMP
+/// bestehen aus zwei UTF-16-Codeeinheiten. Windows liefert je Codeeinheit ein
+/// eigenes WM_CHAR; zusammengesetzt wird das Surrogatpaar von der empfangenden
+/// Anwendung, solange die beiden Ereignisse unmittelbar aufeinander folgen.
+/// Eine leere Zeichenkette ist unschaedlich: die Schleife laeuft dann gar nicht.
+void sendUTF16Sequence(wstring chars, bool down) nothrow {
+    foreach (wchar unit; chars) {
+        sendUTF16(unit, down);
+    }
 }
 
 const REAL_MODIFIERS = [Modifier.LSHIFT, Modifier.RSHIFT, Modifier.LCTRL, Modifier.RCTRL, Modifier.LALT, Modifier.RALT];
@@ -418,10 +343,15 @@ void sendNeoKey(NeoKey nk, Scancode realScan, bool down) nothrow {
         }
         sendVKWithModifiers(nk.vkCode, scan, newForcedModifiers, down);
     } else {
-        if (standaloneModeActive) {
-            sendUTF16OrKeyCombo(nk.charCode, down);
+        // Die Laengenpruefung deckt zugleich den leeren Fall ab: sendNeoKey ist
+        // nothrow und darf nicht ungeprueft auf chars[0] zugreifen. Eine leere
+        // Kette landet im else-Zweig, wo sendUTF16Sequence nichts sendet.
+        if (standaloneModeActive && nk.chars.length == 1) {
+            // Nur BMP-Zeichen koennen eine native Tastenkombination haben:
+            // VkKeyScanEx arbeitet auf wchar.
+            sendUTF16OrKeyCombo(nk.chars[0], down);
         } else {
-            sendUTF16(nk.charCode, down);
+            sendUTF16Sequence(nk.chars, down);
         }
     }
 }
@@ -505,7 +435,9 @@ void[0][Scancode][Modifier] naturalHeldModifiers;
 PartialModifierState currentForcedModifiers;
 
 bool capslock;
-bool mod4Lock;
+// Der gerastete Modifier-Satz. Ersetzt den frueheren bool mod4Lock und traegt
+// zusaetzlich den Anzeigenamen fuer Tooltip und Tray.
+LockState currentLock;
 
 uint previousPatchedLayer = 1;
 uint activeLayer = 1;
@@ -515,8 +447,6 @@ NeoKey[Scancode] heldKeys;
 // last key that was pressed. we only want to release forced modifiers when the key that
 // forced them (the one pressed in the last down event) is released.
 NeoKey lastNeoKey;
-
-NeoLayout *activeLayout;
 
 // should we take over all layers? activated when standaloneMode is true in the config file and the currently selected native layout is not Neo related
 bool standaloneModeActive;
@@ -539,13 +469,146 @@ bool isModifierHeld(Modifier mod) nothrow {
     return (mod in naturalHeldModifiers) && (naturalHeldModifiers[mod].length > 0);
 }
 
+bool isModifierHeldGeneric(Modifier mod) nothrow {
+    // Ein generischer Modifier gilt als gehalten, wenn eine seiner beiden
+    // Varianten gehalten wird. Fuer Mod5 aufwaerts gibt es keine rechte
+    // Variante; die Abfrage laeuft dann ins Leere und liefert false.
+    auto generisch = genericModifier(mod);
+    return isModifierHeld(generisch) || isModifierHeld(cast(Modifier) (generisch | 1));
+}
+
+void clearAllLocks() nothrow {
+    currentLock.set = null;
+    currentLock.name = null;
+}
+
+bool neoModifiersPassThrough() nothrow {
+    // Sehen Programme die Neo-Modifier selbst, schaltet der native Treiber die
+    // Ebene mit - dann darf eine gehaltene Taste die Rastung nicht aufheben.
+    return !configFilterNeoModifiers && !standaloneModeActive;
+}
+
+bool delegate(Modifier) nothrow heldModifierQuery() nothrow {
+    // Das Delegat fasst nichts aus dem Stack an, es entsteht also keine
+    // Closure auf dem Heap.
+    return delegate bool(Modifier mod) nothrow {
+        return isModifierHeldGeneric(mod);
+    };
+}
+
+void refreshActiveLayer() nothrow {
+    // Nach einer Rastung ohne folgenden Tastendruck (Chord-Trigger) muss die
+    // Ebene fuer die Bildschirmtastatur von Hand nachgezogen werden.
+    if (activeLayout is null) return;
+
+    activeLayer = determineLayer(activeLayout.layers, heldModifierQuery(),
+        currentLock.set, neoModifiersPassThrough(), false, activeLayout.layerIgnoresLocks);
+}
+
+/// Ebenenpaar der Compose-Kandidaten in Gewinn-Reihenfolge (Rastungs-Spec 3),
+/// fuer die OSK-Vorschau. zweit == 0 heisst: kein Zweitkandidat. Dieselbe
+/// Rechnung wie am Compose-Aufruf in handleKeyEvent - ein zweiter Rechenweg
+/// wuerde stillschweigend driften.
+void composeEbenenpaar(out uint erst, out uint zweit) nothrow {
+    erst = activeLayer;
+    zweit = 0;
+    if (activeLayout is null || currentLock.empty) return;
+
+    bool rueckfall;
+    uint mitLock = determineLayer(activeLayout.layers, heldModifierQuery(),
+        currentLock.set, neoModifiersPassThrough(), false,
+        activeLayout.layerIgnoresLocks, &rueckfall);
+    uint ohneLock = determineLayer(activeLayout.layers, heldModifierQuery(),
+        null, neoModifiersPassThrough(), false, activeLayout.layerIgnoresLocks);
+    if (ohneLock == mitLock) return;
+
+    if (rueckfall) {
+        erst = ohneLock;
+        zweit = mitLock;
+    } else {
+        erst = mitLock;
+        zweit = ohneLock;
+    }
+}
+
+// Welche Chord-Haupttasten sind gerade unten? Verhindert Dauerfeuer durch
+// Autorepeat und sorgt dafuer, dass auch das Up-Event geschluckt wird.
+void[0][VKEY] chordVkDown;
+
+void fireLockTrigger(ref LockTrigger trigger) nothrow {
+    final switch (trigger.action) {
+        case LockAction.CAPSLOCK:
+        sendVK(VK_CAPITAL, scanCapslock, true);
+        sendVK(VK_CAPITAL, scanCapslock, false);
+        break;
+
+        case LockAction.SET_LOCK:
+        if (trigger.toggleMode) {
+            // Die genannten Modifier in die laufende Rastung hinein- oder
+            // herausschalten. So rastet ein einziger Shift-Chord in jedem
+            // Themenblock dessen zweite Ebene.
+            currentLock.set = toggledLockSet(currentLock.set, trigger.lockSet);
+            currentLock.name = lockSetName(currentLock.set);
+        } else if (currentLock.sameSetAs(trigger.lockSet)) {
+            clearAllLocks();  // derselbe Satz loest
+        } else {
+            // Der Trigger lebt bis zum naechsten Neuladen, die Scheibe darf
+            // deshalb geteilt werden - das spart eine Allokation im Hook.
+            currentLock.set = trigger.lockSet;
+            currentLock.name = trigger.name;
+        }
+        debugWriteln("Rastung: ", currentLock.empty ? "keine" : currentLock.name);
+        refreshActiveLayer();
+        updateLockStateAsync();
+        break;
+
+        case LockAction.CLEAR_LOCKS:
+        clearAllLocks();
+        debugWriteln("Rastung: alle geloest");
+        refreshActiveLayer();
+        updateLockStateAsync();
+        break;
+
+        case LockAction.TOGGLE_OSK:
+        toggleOSK();
+        break;
+
+        case LockAction.TOGGLE_ONE_HANDED_MODE:
+        toggleOneHandedMode();
+        break;
+
+        case LockAction.START_COMPOSE:
+        // Compose ueber einen Ausloeser statt ueber die Ebene: Multi_key liegt
+        // auf Ebene 3 der Tab-Taste und ist damit bei jeder Rastung verloren,
+        // weil "Mod3" dann die +Mod3-Ebene des Blocks trifft. Griechisch und
+        // Kyrillisch haben nicht einmal eine solche. Der Ausloeser laeuft vor
+        // der Ebenenbestimmung und wirkt deshalb in jedem Zustand.
+        //
+        // Der Chord-Zweig kehrt sofort zurueck, der Vergleichsblock am Ende
+        // von handleKeyEvent laeuft also nicht mit. Buchfuehrung und Anzeige
+        // muessen hier von Hand nachgezogen werden, sonst sieht die Vorschau
+        // den Sequenzstart nicht.
+        NeoKey multi;
+        try {
+            multi.keysym = parseKeysym("Multi_key");
+        } catch (Exception e) {
+            debugWriteln("Compose-Ausloeser: Multi_key nicht aufloesbar - ", e.msg);
+            break;
+        }
+        cast(void) compose(multi);
+        previousComposeActive = composeActive();
+        previousComposeNode = currentComposeNode();
+        previousComposeBufferLen = composeSpecialBuffer().length;
+        updateComposeStateAsync();
+        break;
+    }
+}
 
 bool setActiveLayout(NeoLayout *newLayout) nothrow @nogc {
     bool changed = newLayout != activeLayout;
     activeLayout = newLayout;
     return changed;
 }
-
 
 void resetHookStates() nothrow {
     // Reset all stored states that might lead to unwanted locks
@@ -554,7 +617,8 @@ void resetHookStates() nothrow {
     currentForcedModifiers.clear();
 
     capslock = false;
-    mod4Lock = false;
+    clearAllLocks();
+    chordVkDown.clear();
 
     setCapslockState(false);
     setKanaState(false);
@@ -583,18 +647,18 @@ bool handleKeyEvent(Scancode scan, bool down) nothrow {
         isModifier = true;
         bool isNeoModifier = mod >= 0x100;
 
-        // handle capslock and mod4 lock
+        // Doppeltasten-Trigger: linke und rechte Variante desselben Modifiers
+        // zusammen, also etwa beide Shift fuer Capslock oder beide Mod4 fuer
+        // den Mod4-Lock. Ausgeloest wird beim Druecken der zweiten Taste.
         if (down) {
-            if (mod == Modifier.LSHIFT && !isModifierHeld(Modifier.LSHIFT) && isModifierHeld(Modifier.RSHIFT) ||
-                mod == Modifier.RSHIFT && !isModifierHeld(Modifier.RSHIFT) && isModifierHeld(Modifier.LSHIFT)) {
-                sendVK(VK_CAPITAL, scanCapslock, true);
-                sendVK(VK_CAPITAL, scanCapslock, false);
-            }
+            auto andereVariante = cast(Modifier) (mod ^ 1);
 
-            if (mod == Modifier.LMOD4 && !isModifierHeld(Modifier.LMOD4) && isModifierHeld(Modifier.RMOD4) ||
-                mod == Modifier.RMOD4 && !isModifierHeld(Modifier.RMOD4) && isModifierHeld(Modifier.LMOD4)) {
-                if (configEnableMod4Lock || mod4Lock)  // always allow lock to be disabled
-                    mod4Lock = !mod4Lock;
+            foreach (ref trigger; configLockTriggers) {
+                if (trigger.kind != TriggerKind.DOUBLE_MODIFIER) continue;
+                if (trigger.modifier != genericModifier(mod)) continue;
+                if (isModifierHeld(mod) || !isModifierHeld(andereVariante)) continue;
+
+                fireLockTrigger(trigger);
             }
         }
 
@@ -634,61 +698,28 @@ bool handleKeyEvent(Scancode scan, bool down) nothrow {
 
 
     // determine the layer we are currently on
-    uint layer = 1;  // first layer is 1!!
+    auto isHeld = heldModifierQuery();
 
-    // test all defined layers and choose first matching
-    foreach (i, layerModState; activeLayout.layers) {
-        bool allMatch = true;
+    // Die Basisebene ergibt sich aus physisch gehaltenen und gerasteten
+    // Modifiern (XOR, siehe layerlock.modifierActive). Capslock kommt erst
+    // danach und nur unter engen Bedingungen dazu.
+    bool layerRueckfall;
+    uint baseLayer = determineLayer(activeLayout.layers, isHeld, currentLock.set,
+        neoModifiersPassThrough(), false, activeLayout.layerIgnoresLocks, &layerRueckfall);
+    uint layer = baseLayer;
 
-        foreach (mod; layerModState.byKey) { // we can't do (mod, modState; layerModState) because _aaApply2 is not nothrow 🙄
-            bool requiredModState = layerModState[mod];
-            // "mod ^ 1" converts left to right variant and vice versa
-            if (requiredModState && !(isModifierHeld(mod) || isModifierHeld(cast(Modifier) (mod ^ 1))) ||
-                !requiredModState && (isModifierHeld(mod) || isModifierHeld(cast(Modifier) (mod ^ 1)))) {
-                allMatch = false;
-                break;
-            }
-        }
-
-        if (allMatch) {
-            layer = cast(uint) i + 1;
-            break;
-        }
+    if (capslockSwapApplies(capslock, isCapslockable(scan), !currentLock.empty, isHeld)) {
+        // Capslock dreht den Shift-Zustand um, statt fest zwischen Ebene 1 und
+        // 2 zu tauschen. Fuer die gepflegten Layouts ist das dasselbe. Auf
+        // gerasteten Ebenen schweigt Capslock (capslockSwapApplies verlangt
+        // "kein Lock aktiv") - dort uebernimmt der Shift-Toggle-Chord.
+        layer = determineLayer(activeLayout.layers, isHeld, currentLock.set,
+            neoModifiersPassThrough(), true, activeLayout.layerIgnoresLocks);
     }
 
-    bool shiftDown = isModifierHeld(Modifier.LSHIFT) || isModifierHeld(Modifier.RSHIFT);
-    bool mod4Down = isModifierHeld(Modifier.LMOD4) || isModifierHeld(Modifier.RMOD4);
-
-    // handle capslock
-    if (capslock && isCapslockable(scan)) {
-        if (shiftDown && layer == 2) {
-            layer = 1;
-        } else if (!shiftDown && layer == 1) {
-            layer = 2;
-        }
-    }
-
-    // handle mod4 lock
-    if (mod4Lock) {
-        // switch back to layer 1 while holding mod 4
-        // EXCEPT if we are in extension mode and "filterNeoModifiers" is false
-        // in that case we stay on layer 4, because the "real" M4 event interferes with layer 1 keys
-        if (mod4Down && (configFilterNeoModifiers || standaloneModeActive)) {
-            layer = 1;
-        } else {
-            layer = 4;
-        }
-    }
-
-    uint oskLayer = layer;
-    // Simplify capslock logic for OSK
-    if (capslock && (oskLayer == 1 || oskLayer == 2)) {
-        if (shiftDown) {
-            oskLayer = 2;
-        } else {
-            oskLayer = 1;
-        }
-    }
+    // Die Bildschirmtastatur rechnet die Capslock-Vertauschung pro Taste selbst
+    // (keyboardview.d: describeKey), bekommt also die Ebene davor.
+    uint oskLayer = baseLayer;
 
     // Update OSK if necessary
     if (oskLayer != activeLayer || capslockChanged) {
@@ -740,9 +771,44 @@ bool handleKeyEvent(Scancode scan, bool down) nothrow {
         scan == Scancode(0x2C, false) || scan == Scancode(0x2D, false) || scan == Scancode(0x2E, false) || scan == Scancode(0x2F, false) || scan == Scancode(0x30, false)
     );
 
+    // Frueher hartkodiert als "layer >= 3". Datengetrieben stimmt es auch fuer
+    // Layouts, deren Ebenen in anderer Reihenfolge stehen.
+    bool needsNeoModifier = layer >= 1 && layer <= activeLayout.layerNeedsNeoModifier.length
+        && activeLayout.layerNeedsNeoModifier[layer - 1];
+    // Traegt die Rastung gerade etwas bei, das nicht ohnehin gehalten wird?
+    // Dann weiss der native Treiber nichts davon und wir muessen ersetzen.
+    bool lockActive = lockContributes(currentLock.set, isHeld);
 
     if (down) {
-        auto composeResult = compose(nk);
+        // Zweitkandidat fuer Compose-Fortsetzungen unter Rastung
+        // (Rastungs-Spec 2.2): der Zustand ohne Rastung, mit denselben
+        // gehaltenen Modifiern. Gerastet zuerst; ist die Primaer-Ebene nur
+        // der Rueckfall (keine Ebene passte), dreht sich die Reihenfolge.
+        // Seit der Sondermodi-Runde gilt das auch im Sondermodus: Dort
+        // waehlt composer.compose den Kandidaten ueber einen Probelauf,
+        // statt den zweiten zu verwerfen (Sondermodi-Spec 3).
+        NeoKey erst = nk;
+        NeoKey zweitKey;
+        const(NeoKey)* zweit = null;
+        if (composeActive() && !currentLock.empty) {
+            uint ebeneOhne = determineLayer(activeLayout.layers, isHeld, null,
+                neoModifiersPassThrough(), false, activeLayout.layerIgnoresLocks);
+            if (capslockSwapApplies(capslock, isCapslockable(scan), false, isHeld)) {
+                // Capslock-Regel, wie sie OHNE Rastung gaelte (Spec 2.2).
+                ebeneOhne = determineLayer(activeLayout.layers, isHeld, null,
+                    neoModifiersPassThrough(), true, activeLayout.layerIgnoresLocks);
+            }
+            if (ebeneOhne != layer) {
+                zweitKey = mapToNeo(scan, ebeneOhne);
+                if (layerRueckfall) {
+                    // Drehung: der Rueckfall ist kein gewaehlter Zustand.
+                    zweitKey = nk;
+                    erst = mapToNeo(scan, ebeneOhne);
+                }
+                zweit = &zweitKey;
+            }
+        }
+        auto composeResult = compose(erst, zweit);
 
         if (composeResult.type == ComposeResultType.PASS) {
             heldKeys[scan] = nk;
@@ -755,19 +821,38 @@ bool handleKeyEvent(Scancode scan, bool down) nothrow {
             //   - if false, don't eat keys and instead leave the translation of those layers to kbdneo
             //     except the navigation keys on layer 4 that are missing in kbdneo
             //   - also eat every key if mod 4 lock is active, because that isn't handled in kbdneo
-            if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && layer >= 3) || isLayer4NavKey || (mod4Lock && !mod4Down)) {
+            if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && needsNeoModifier) || isLayer4NavKey || lockActive) {
                 eat = true;
                 sendNeoKey(nk, scan, true);
             }
         } else {
             eat = true;
 
-            if (composeResult.type == ComposeResultType.FINISH || composeResult.type == ComposeResultType.ABORT) {
+            if (composeResult.type == ComposeResultType.FINISH
+                || composeResult.type == ComposeResultType.EMIT
+                || composeResult.type == ComposeResultType.ABORT) {
                 sendString(composeResult.result);
             }
         }
+
+        // Sichtbaren Compose-Zustand mit dem letzten Stand vergleichen und
+        // die Anzeige nur bei einer Aenderung anstossen. Hook und
+        // Fensterprozedur laufen im selben Thread (WH_KEYBOARD_LL wird ueber
+        // die Nachrichtenschlange des installierenden Threads gerufen),
+        // PostMessage reiht die Zeichnung hinter dieses Tastenereignis ein.
+        bool composeJetzt = composeActive();
+        auto composeKnoten = currentComposeNode();
+        auto composePuffer = composeSpecialBuffer().length;
+        if (composeJetzt != previousComposeActive
+            || composeKnoten !is previousComposeNode
+            || composePuffer != previousComposeBufferLen) {
+            previousComposeActive = composeJetzt;
+            previousComposeNode = composeKnoten;
+            previousComposeBufferLen = composePuffer;
+            updateComposeStateAsync();
+        }
     } else {
-        if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && layer >= 3) || isLayer4NavKey || (mod4Lock && !mod4Down)) {
+        if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && needsNeoModifier) || isLayer4NavKey || lockActive) {
             eat = true;
 
             // release the key that is held for this vk
@@ -846,16 +931,34 @@ bool keyboardHook(WPARAM msgType, KBDLLHOOKSTRUCT msgStruct) nothrow {
         return true;  // Eat event
     }
 
-    // Toggle OSK on M3+F1
-    if (vk == VK_F1 && down && (isModifierHeld(Modifier.LMOD3) || isModifierHeld(Modifier.RMOD3))) {
-        toggleOSK();
-        return true;  // Eat F1
-    }
+    // Chord-Trigger als Tabellen-Dispatch. Die Vorgabe enthaelt M3+F1 fuer die
+    // Bildschirmtastatur, M3+F10 fuer den Einhandmodus und M3+Escape zum Loesen
+    // aller Rastungen; weitere kommen aus der Konfiguration.
+    foreach (ref trigger; configLockTriggers) {
+        if (trigger.kind != TriggerKind.CHORD) continue;
+        if (vk != trigger.chordKey) continue;
 
-    // Toggle one handed mode on M3+F10
-    if (vk == VK_F10 && down && (isModifierHeld(Modifier.LMOD3) || isModifierHeld(Modifier.RMOD3))) {
-        toggleOneHandedMode();
-        return true;  // Eat F10
+        if (down) {
+            bool alleGehalten = true;
+            foreach (m; trigger.chordMods) {
+                if (!isModifierHeldGeneric(m)) {
+                    alleGehalten = false;
+                    break;
+                }
+            }
+            if (!alleGehalten) continue;
+
+            // Autorepeat wuerde den Trigger sonst im Dauerfeuer ausloesen
+            if (!(vk in chordVkDown)) {
+                chordVkDown[vk] = [];
+                fireLockTrigger(trigger);
+            }
+
+            return true;  // Down essen
+        } else if (vk in chordVkDown) {
+            chordVkDown.remove(vk);
+            return true;  // das zugehoerige Up ebenfalls essen
+        }
     }
 
     // Handle Numlock key, which would otherwise toggle Numlock state without changing the LED.
@@ -891,8 +994,8 @@ bool keyboardHook(WPARAM msgType, KBDLLHOOKSTRUCT msgStruct) nothrow {
             if (!down) {  // on mirror key up
                 if (!eatMirrorKey) {
                     // mirror key wasn't "used" to mirror keys, so send its normal up and down events
-                    handleKeyEvent(scan, true);
-                    handleKeyEvent(scan, false);
+                    cast(void) handleKeyEvent(scan, true);
+                    cast(void) handleKeyEvent(scan, false);
                 }
 
                 eatMirrorKey = false;
@@ -900,7 +1003,7 @@ bool keyboardHook(WPARAM msgType, KBDLLHOOKSTRUCT msgStruct) nothrow {
                 if (primedOneHandedKeys) {
                     // Some keys are still held, send those as unmirrored down events now (in order)
                     foreach (Scancode heldKey; primedOneHandedKeys) {
-                        handleKeyEvent(heldKey, true);
+                        cast(void) handleKeyEvent(heldKey, true);
                     }
 
                     primedOneHandedKeys = [];
@@ -928,8 +1031,8 @@ bool keyboardHook(WPARAM msgType, KBDLLHOOKSTRUCT msgStruct) nothrow {
                     primedOneHandedKeys = primedOneHandedKeys.remove(primedKeyIndex);
                     // on up, send the mirrored down and up event
                     auto mirroredScan = configOneHandedModeMirrorMap[scan];
-                    handleKeyEvent(mirroredScan, true);
-                    handleKeyEvent(mirroredScan, false);
+                    cast(void) handleKeyEvent(mirroredScan, true);
+                    cast(void) handleKeyEvent(mirroredScan, false);
 
                     // mirror key was "used" while held, so don't send its original key later when it's released
                     eatMirrorKey = true;

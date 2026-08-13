@@ -1,6 +1,7 @@
 module osk;
 
 import core.sys.windows.windows;
+import core.sys.windows.winreg;
 
 import std.string;
 import std.path;
@@ -9,9 +10,12 @@ import std.json;
 import std.conv;
 
 import mapping;
-import reneo;
-import app : updateOSK, toggleOSK;
-import localization : controlKeyName;
+import keyboardview;
+import composeview : ComposeDisplay, ComposeKeyKind, ComposeKeyView;
+import fontchain;
+import debuglog;
+import app : updateOSK, toggleOSK, executableDir;
+import localization : AppString, appString, controlKeyName;
 
 import cairo;
 import cairo_win32;
@@ -33,12 +37,38 @@ OSKLayout configOskLayout;
 bool configOskNumberRow;
 OSKModifierNames configOskModifierNames;
 
+// Anders als eine HTML-Seite kennt ein Win32-Fenster kein prefers-color-scheme.
+// "Sachlich" liest deshalb die Windows-Einstellung und waehlt danach den hellen
+// oder den dunklen Tokensatz. Gepuffert, weil drawOsk bei jedem Ebenenwechsel
+// laeuft; aufgefrischt wird bei WM_SETTINGCHANGE (app.d).
+private bool oskLightTheme = true;
+
+void refreshOskTheme() nothrow {
+    oskLightTheme = windowsAppsUseLightTheme();
+}
+
+/// HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize,
+/// AppsUseLightTheme: 1 = hell, 0 = dunkel. Fehlt der Wert, gilt hell.
+private bool windowsAppsUseLightTheme() nothrow {
+    DWORD wert = 1;
+    DWORD groesse = wert.sizeof;
+
+    auto rc = RegGetValue(HKEY_CURRENT_USER,
+        `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`w.ptr,
+        "AppsUseLightTheme"w.ptr,
+        RRF_RT_REG_DWORD, null, &wert, &groesse);
+
+    if (rc != ERROR_SUCCESS) return true;
+    return wert != 0;
+}
+
 
 enum OSKTheme {
     Grey,
     NeoBlue,
     ColorClassic,
-    ColorGreen
+    ColorGreen,
+    Sachlich
 }
 
 enum OSKLayout {
@@ -68,9 +98,6 @@ const float M_PI = 3.14159265358979323846;
 
 OSKKeyType[Scancode] KEY_TYPES;
 
-HFONT[] WIN_FONTS;
-cairo_font_face_t*[] CAIRO_FONTS;
-
 
 void initOsk(JSONValue oskJson) {
     // Read config
@@ -80,15 +107,10 @@ void initOsk(JSONValue oskJson) {
     configOskNumberRow = oskJson["numberRow"].boolean;
     configOskModifierNames = oskJson["modifierNames"].str.toUpper.to!OSKModifierNames;
 
-    // Load fonts
-    WIN_FONTS ~= CreateFont(0, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Segoe UI".toUTF16z);
-    WIN_FONTS ~= CreateFont(0, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Segoe UI Symbol".toUTF16z);
-    
-    foreach (HFONT winFont; WIN_FONTS) {
-        CAIRO_FONTS ~= cairo_win32_font_face_create_for_hfont(winFont);
-    }
+    refreshOskTheme();
+
+    // Schriften und Glyphbeschaffung stehen in fontchain.d
+    initFontChain(executableDir);
 
     // Define key types
     KEY_TYPES[Scancode(0x29, false)] = OSKKeyType.PINKY;
@@ -142,21 +164,11 @@ void initOsk(JSONValue oskJson) {
     KEY_TYPES[Scancode(0x35, false)] = OSKKeyType.PINKY;
 }
 
-cairo_font_face_t* getFontFaceForChar(HDC hdc, string c) {
-    for (int i = 0; i < WIN_FONTS.length - 1; i++) {
-        SelectObject(hdc, WIN_FONTS[i]);
-        WORD glyphIndex;
-        GetGlyphIndices(hdc, c.toUTF16z, 1, &glyphIndex, GGI_MARK_NONEXISTING_GLYPHS);
-        if (glyphIndex != 0xffff) {
-            return CAIRO_FONTS[i];
-        }
-    }
+void drawOsk(HWND hwnd, NeoLayout *layout, uint layer, bool capslock,
+             scope bool delegate(Modifier) nothrow isHeld, bool anyLockActive,
+             const(ComposeDisplay)* composeAnzeige = null,
+             wstring ebenenText = null) {
 
-    // Fallback, return last font
-    return CAIRO_FONTS[CAIRO_FONTS.length - 1];
-}
-
-void drawOsk(HWND hwnd, NeoLayout *layout, uint layer, bool capslock) {
     RECT winRect;
     GetWindowRect(hwnd, &winRect);
     const uint winWidth = winRect.right - winRect.left;
@@ -192,22 +204,38 @@ void drawOsk(HWND hwnd, NeoLayout *layout, uint layer, bool capslock) {
     // with whole keyboard proportionally centered in window
     float keyboardWidthPx, keyboardHeightPx;
     const float KEYBOARD_WIDTH = configOskNumpad ? KEYBOARD_WIDTH_WITH_NUMPAD : KEYBOARD_WIDTH_NO_NUMPAD;
+
+    // Kopfstreifen: Waehrend einer Compose-Sequenz und bei aktiver Rastung
+    // waechst der logische Raum um KOPF; die Letterbox skaliert die Tastatur
+    // entsprechend kleiner. Das Fenster behaelt Groesse und Position - der
+    // erscheinende Streifen ist das Signal "Compose laeuft" bzw. "eine Ebene
+    // ist gerastet", sein Verschwinden zeigt das Ende (Spec 5.1).
+    //
+    // Beim blossen Halten von Mod3/Mod4 bleibt er bewusst weg: Er wuerde bei
+    // jedem Modifier-Griff auf- und zuklappen. Gerastet ist der Fall, in dem
+    // man nicht mehr weiss, welche Ebene man vor sich hat.
+    const bool zeigeEbene = ebenenText.length > 0;
+    const float KOPF = (composeAnzeige !is null || zeigeEbene) ? 0.7 : 0;
+    const float GESAMT_HOEHE = KEYBOARD_HEIGHT + KOPF;
+
     // should we letterbox left and right or on top and bottom?
-    if (winWidth / winHeight > KEYBOARD_WIDTH / KEYBOARD_HEIGHT) {
+    if (winWidth / winHeight > KEYBOARD_WIDTH / GESAMT_HOEHE) {
         // letterbox left and right
         keyboardHeightPx = winHeight;
-        keyboardWidthPx = keyboardHeightPx * KEYBOARD_WIDTH / KEYBOARD_HEIGHT;
+        keyboardWidthPx = keyboardHeightPx * KEYBOARD_WIDTH / GESAMT_HOEHE;
     } else {
         // letterbox top and bottom
         keyboardWidthPx = winWidth;
-        keyboardHeightPx = keyboardWidthPx * KEYBOARD_HEIGHT / KEYBOARD_WIDTH;
+        keyboardHeightPx = keyboardWidthPx * GESAMT_HOEHE / KEYBOARD_WIDTH;
     }
     cairo_translate(cr, (winWidth - keyboardWidthPx) / 2, (winHeight - keyboardHeightPx) / 2);
-    cairo_scale(cr, keyboardWidthPx / KEYBOARD_WIDTH, keyboardHeightPx / KEYBOARD_HEIGHT);
+    cairo_scale(cr, keyboardWidthPx / KEYBOARD_WIDTH, keyboardHeightPx / GESAMT_HOEHE);
 
     // Draw keys
     const float PADDING = 0.05;
-    const float CORNER_RADIUS = 0.1;
+    const float CORNER_RADIUS = configOskTheme == OSKTheme.Sachlich ? 0 : 0.1;
+    const float HAIRLINE = 0.02;
+    const float AKZENT_BREITE = 0.06;
 
     const float FONT_SIZE = 0.45;
     const float BASE_LINE = 0.7;
@@ -229,66 +257,55 @@ void drawOsk(HWND hwnd, NeoLayout *layout, uint layer, bool capslock) {
     cairo_pattern_t *COLOR_GREEN_GREEN = cairo_pattern_create_rgba(74.0/255.0, 164.0/255.0, 74.0/255.0, 0.95);
     cairo_pattern_t *COLOR_GREEN_LIGHT_GREEN = cairo_pattern_create_rgba(139.0/255.0, 189.0/255.0, 139.0/255.0, 0.95);
 
+    // Design-Standard "Schweizer Sachlichkeit", ein Akzent-Slot (Ultramarin).
+    // Hell und dunkel als zwei Tokensaetze, ausgewaehlt ueber die
+    // Windows-Einstellung.
+    cairo_pattern_t *SACHLICH_PAPIER = oskLightTheme
+        ? cairo_pattern_create_rgba(0xF4/255.0, 0xF4/255.0, 0xF4/255.0, 0.97)
+        : cairo_pattern_create_rgba(0x1C/255.0, 0x1A/255.0, 0x1D/255.0, 0.97);
+    cairo_pattern_t *SACHLICH_TINTE = oskLightTheme
+        ? cairo_pattern_create_rgba(0x0A/255.0, 0x0A/255.0, 0x0A/255.0, 1.0)
+        : cairo_pattern_create_rgba(0xE0/255.0, 0xDC/255.0, 0xDF/255.0, 1.0);
+    cairo_pattern_t *SACHLICH_MUTED = oskLightTheme
+        ? cairo_pattern_create_rgba(0x57/255.0, 0x57/255.0, 0x57/255.0, 1.0)
+        : cairo_pattern_create_rgba(0x9A/255.0, 0x92/255.0, 0x98/255.0, 1.0);
+    cairo_pattern_t *SACHLICH_LINIE = oskLightTheme
+        ? cairo_pattern_create_rgba(0xC6/255.0, 0xC6/255.0, 0xC6/255.0, 1.0)
+        : cairo_pattern_create_rgba(0x38/255.0, 0x33/255.0, 0x37/255.0, 1.0);
+    cairo_pattern_t *SACHLICH_AKZENT = oskLightTheme
+        ? cairo_pattern_create_rgba(0x23/255.0, 0x23/255.0, 0xD6/255.0, 1.0)
+        : cairo_pattern_create_rgba(0xA9/255.0, 0xC9/255.0, 0xE8/255.0, 1.0);
+
     cairo_pattern_t *TEXT_COLOR;
 
     switch (configOskTheme) {
         case OSKTheme.ColorClassic: TEXT_COLOR = cairo_pattern_create_rgba(0.05, 0.05, 0.05, 1.0); break;
         case OSKTheme.ColorGreen: TEXT_COLOR = cairo_pattern_create_rgba(0.05, 0.05, 0.05, 1.0); break;
+        case OSKTheme.Sachlich: TEXT_COLOR = SACHLICH_TINTE; break;
         default: TEXT_COLOR = cairo_pattern_create_rgba(0.95, 0.95, 0.95, 1.0);
     }
 
     cairo_set_font_size(cr, FONT_SIZE);
 
-    string getKeyLabel(Scancode scan) {
-        // Returns "UNMAPPED" for unmapped keys, those don't get drawn
+    // Was eine Taste ist, entscheidet keyboardview.d - hier wird nur gezeichnet.
+    KeyView viewFor(Scancode scan) {
+        return describeKey(layout, scan, layer, capslock, isHeld, anyLockActive);
+    }
 
-        if (layout != null) {
-            if (scan in layout.map) {    
-                auto entry = layout.map[scan];
-                uint layerConsideringCapslock = layer;
-
-                if (capslock && entry.capslockable) {
-                    if (layer == 2) {
-                        layerConsideringCapslock = 1;
-                    } else if (layer == 1) {
-                        layerConsideringCapslock = 2;
-                    }
-                }
-
-                return layout.map[scan].layers[layerConsideringCapslock-1].label;
-            } else if (scan in layout.modifiers) {
-                uint mod = layout.modifiers[scan] & 0xFFFE; // convert left and right variant to left variant
-                switch (mod) {
-                    case Modifier.LSHIFT: return "\u21e7";
-                    case Modifier.LCTRL: return controlKeyName();
-                    case Modifier.LALT: return "Alt";
-                    case Modifier.MOD3:
-                        if (configOskModifierNames == OSKModifierNames.STANDARD)
-                            return "M3";
-                        else if (configOskModifierNames == OSKModifierNames.THREE)
-                            return "Sym";
-                    break;
-                    case Modifier.MOD4:
-                    if (configOskModifierNames == OSKModifierNames.STANDARD)
-                            return "M4";
-                        else if (configOskModifierNames == OSKModifierNames.THREE)
-                            return "Cur";
-                    break;
-                    case Modifier.MOD5: return "M5";
-                    case Modifier.MOD6: return "M6";
-                    case Modifier.MOD7: return "M7";
-                    case Modifier.MOD8: return "M8";
-                    case Modifier.MOD9: return "M9";
-                    default: break;
-                }
-            } else if (scan == Scancode(0x0E, false)) {
-                return "\u232b"; // Backspace
-            } else if (scan == Scancode(0x1C, true) || scan == Scancode(0x1C, false)) {
-                return "\u21a9"; // Return or Numpad Return
-            }
+    // Die zwei Uebersetzungen, die zur Darstellung gehoeren und deshalb hier
+    // bleiben: die Konfigurationsoption fuer die Modifier-Namen (M3 gegen Sym)
+    // und die Lokalisierung der Strg-Taste. keyboardview.modifierLabel liefert
+    // nur die deutsche Standardform. Wirkt auf KeyLabel.text, nicht mehr auf
+    // KeyView.label direkt - ob und was ueberhaupt zu sehen ist, entscheidet
+    // seit Paket 5b keyboardview.keyLabel.
+    string labelFor(KeyKind kind, string text) {
+        if (kind != KeyKind.MODIFIER) return text;
+        if (text == "Strg") return controlKeyName();
+        if (configOskModifierNames == OSKModifierNames.THREE) {
+            if (text == "M3") return "Sym";
+            if (text == "M4") return "Cur";
         }
-
-        return "UNMAPPED";
+        return text;
     }
 
     cairo_pattern_t *getKeyColor(Scancode scan) {
@@ -327,148 +344,459 @@ void drawOsk(HWND hwnd, NeoLayout *layout, uint layer, bool capslock) {
         }
     }
     
-    void showKeyLabelCentered(string label, float keyX, float keyWidth, float baseline) {
-        cairo_set_source(cr, TEXT_COLOR);
-        cairo_set_font_face(cr, getFontFaceForChar(hdcMem, label));
-        auto labelz = label.toStringz;
-        cairo_text_extents_t extents;
-        cairo_text_extents(cr, labelz, &extents);
-        cairo_move_to(cr, keyX + (keyWidth - extents.width) / 2, baseline);
-        cairo_show_text(cr, labelz);
+    void zeichneLauf(GlyphLookup lookup, float keyX, float keyWidth, float baseline) {
+        cairo_set_font_face(cr, fontFaceAt(lookup.fontIndex));
+
+        // cairo_show_glyphs verlangt eine ABSOLUTE Position je Glyph;
+        // cairo_show_text hat den Vorschub selbst gerechnet. Also erst relativ
+        // setzen und messen, dann um den Startpunkt verschieben.
+        cairo_glyph_t[] glyphs;
+        cairo_text_extents_t gesamt;
+
+        void vermesse() {
+            glyphs = [];
+            double x = 0;
+            foreach (g; lookup.glyphs) {
+                auto einzeln = cairo_glyph_t(g, x, 0);
+                cairo_text_extents_t vorschub;
+                cairo_glyph_extents(cr, &einzeln, 1, &vorschub);
+                glyphs ~= einzeln;
+                x += vorschub.x_advance;
+            }
+            cairo_glyph_extents(cr, glyphs.ptr, cast(int) glyphs.length, &gesamt);
+        }
+
+        vermesse();
+
+        // Einpassung: Nur wenn der Lauf breiter ist als die Taste minus Rand,
+        // wird die Schrift um genau den Fehlbetrag verkleinert. Einbuchstabige
+        // Beschriftungen (die grosse Mehrheit) bleiben unveraendert; ZWNJ und
+        // Geschwister schrumpfen auf Passmass, statt in die Nachbartaste zu
+        // laufen (Befund vom 02.08.2026, Typografie-Ebene).
+        const double verfuegbar = keyWidth - 2 * PADDING - 0.04;
+        cairo_matrix_t alteMatrix;
+        cairo_get_font_matrix(cr, &alteMatrix);
+        bool eingepasst = false;
+        if (gesamt.width > verfuegbar && verfuegbar > 0) {
+            const double faktor = verfuegbar / gesamt.width;
+            cairo_matrix_t neu = alteMatrix;
+            neu.xx *= faktor; neu.yy *= faktor;
+            neu.xy *= faktor; neu.yx *= faktor;
+            cairo_set_font_matrix(cr, &neu);
+            eingepasst = true;
+            vermesse();
+        }
+
+        double startX = keyX + (keyWidth - gesamt.width) / 2;
+        foreach (ref g; glyphs) {
+            g.x += startX;
+            g.y = baseline;
+        }
+
+        cairo_show_glyphs(cr, glyphs.ptr, cast(int) glyphs.length);
+
+        if (eingepasst) {
+            cairo_set_font_matrix(cr, &alteMatrix);
+        }
     }
 
-    void drawKey(float x, float y, float width, float height, Scancode scan) {
-        string label = getKeyLabel(scan);
+    // Breite eines Laufs bei aktueller Schriftgroesse - fuer links- und
+    // rechtsbuendige Platzierung im Kopfstreifen. zeichneLauf zentriert
+    // innerhalb keyWidth; Zentrierung ueber die EXAKTE Laufbreite ist
+    // Linksbuendigkeit.
+    double messeLaufBreite(GlyphLookup lookup) {
+        cairo_set_font_face(cr, fontFaceAt(lookup.fontIndex));
+        double x = 0;
+        foreach (g; lookup.glyphs) {
+            auto einzeln = cairo_glyph_t(g, x, 0);
+            cairo_text_extents_t vorschub;
+            cairo_glyph_extents(cr, &einzeln, 1, &vorschub);
+            x += vorschub.x_advance;
+        }
+        return x;
+    }
 
-        if (label == "UNMAPPED")
+    // Einen Lauf linksbuendig an 'links' setzen, ohne dass die Einpassung
+    // zuschlaegt.
+    //
+    // zeichneLauf verkleinert jeden Lauf, der breiter ist als
+    // keyWidth - 2*PADDING - 0.04. Wer die nackte Laufbreite als keyWidth
+    // uebergibt - was nach exakter Platzierung aussieht -, liegt damit IMMER
+    // um 0.14 zu knapp, und der Lauf schrumpft. Bei einem langen Lauf faellt
+    // das kaum auf, bei einem kurzen frisst 0.14 fast die ganze Breite:
+    // einstellige Blattzahlen landeten so bei rund einem Drittel ihrer
+    // Groesse, waehrend zweistellige daneben fast richtig aussahen - und der
+    // Ausstiegsmarker blieb duenn und klein trotz Anteil 0.95 (Sichtpruefung
+    // 08.08.2026, beides in derselben Ansicht nebeneinander zu sehen).
+    //
+    // Deshalb den Rand aufschlagen und den Startpunkt um seine Haelfte nach
+    // links ziehen - zeichneLauf zentriert innerhalb keyWidth, das ergibt
+    // wieder genau 'links'.
+    void zeichneLaufBei(GlyphLookup lookup, double links, double breite,
+                        float baseline) {
+        const double rand = 2 * PADDING + 0.04;
+        zeichneLauf(lookup, cast(float)(links - rand / 2),
+                    cast(float)(breite + rand), baseline);
+    }
+
+    // Notnagel: Findet keine Schrift der Kette den Glyphen, steht der Codepunkt
+    // klein in Mono auf der Taste (1D56C) statt eines leeren Kastens. Das ist
+    // ausdruecklich NICHT die geplante Antwort auf exotische Zeichen, sondern
+    // die ehrliche Auskunft fuer den Fall, dass die Kette versagt.
+    void zeigeCodepunkt(wstring text, float keyX, float keyWidth, float baseline) {
+        import std.format : format;
+
+        dstring codepunkte;
+        try {
+            codepunkte = text.to!dstring;
+        } catch (Exception e) {
             return;
+        }
+        if (codepunkte.length == 0) return;
 
-        auto keyColor = getKeyColor(scan);
+        // codepunkte[0]: Seit Paket 5a kann eine Taste eine mehrzeichige
+        // Beschriftung tragen, der Notnagel meldet dann nur den ERSTEN
+        // Codepunkt, als waere er die ganze Taste. Vertretbar - der Notnagel
+        // ist ohnehin die Ausnahme, keine mehrzeichige Beschriftung nutzt ihn
+        // heute -, aber bewusst keine Verhaltensaenderung an dieser Stelle.
+        wstring hex;
+        try {
+            hex = format("%X", cast(uint) codepunkte[0]).to!wstring;
+        } catch (Exception e) {
+            return;
+        }
 
-        roundRectangle(cr, x + PADDING, y + PADDING, width - 2*PADDING, height - 2*PADDING, CORNER_RADIUS);
-        cairo_set_source(cr, keyColor);
+        auto lookup = lookupInFont(hex, monoFontIndex());
+        if (!lookup.found) return;
+
+        cairo_set_font_size(cr, FONT_SIZE * 0.45);
+        scope(exit) cairo_set_font_size(cr, FONT_SIZE);
+        zeichneLauf(lookup, keyX, keyWidth, baseline);
+    }
+
+    void showKeyLabelCentered(string label, float keyX, float keyWidth, float baseline) {
+        wstring text;
+        try {
+            text = label.to!wstring;
+        } catch (Exception e) {
+            return;
+        }
+
+        // TEXT_COLOR gilt fuer die alten Schemata; Sachlich hat die Farbe
+        // schon nach Tastenart gesetzt.
+        if (configOskTheme != OSKTheme.Sachlich) {
+            cairo_set_source(cr, TEXT_COLOR);
+        }
+
+        auto lookup = lookupGlyphs(text);
+        if (lookup.found) {
+            zeichneLauf(lookup, keyX, keyWidth, baseline);
+        } else {
+            zeigeCodepunkt(text, keyX, keyWidth, baseline);
+        }
+    }
+
+    // Der Akzentbalken einer Zeichentaste nimmt links Platz weg. Zentriert
+    // wird deshalb in der Restflaeche und nicht ueber der ganzen Taste - sonst
+    // rueckt jede mehrbuchstabige Beschriftung sichtbar an den Balken heran,
+    // und die Einpassung aus zeichneLauf rechnet mit einer Breite, die es gar
+    // nicht gibt (Befund aus der Abnahme der OSK-Vorschau).
+    void zeigeTastenBeschriftung(string label, KeyGeometry geo, KeyView view) {
+        const bool akzent = configOskTheme == OSKTheme.Sachlich
+                            && view.codepoints.length > 0;
+        showKeyLabelCentered(label,
+                             akzent ? geo.x + AKZENT_BREITE : geo.x,
+                             akzent ? geo.width - AKZENT_BREITE : geo.width,
+                             geo.y + (geo.height - 1) / 2 + BASE_LINE);
+    }
+
+    // Kleiner Marker unten rechts in der Taste. Gemeinsame Stelle fuer den
+    // Blattzahl-Marker und den Ausstiegsmarker, damit die zwei eine Familie
+    // bilden statt in zwei Groessen nebeneinanderzustehen.
+    //
+    // Groesse und Farbe sind Nacharbeit aus der Sichtpruefung vom 08.08.2026
+    // (STATUS.md Punkt 30, Befund b): 0.5 in MUTED war kaum lesbar.
+    void zeichneEckMarker(wstring marker, KeyGeometry geo, float anteil) {
+        if (marker.length == 0) return;
+        auto lookupM = lookupGlyphs(marker);
+        if (!lookupM.found) return;
+        cairo_set_font_size(cr, FONT_SIZE * anteil);
+        cairo_set_source(cr, TEXT_COLOR);
+        // Tief in die Ecke. Der frueherere Abstand (0.05/0.1) stammt aus der
+        // Zeit, als der Marker halb so gross war; mit der groesseren Zahl
+        // schob er sich sichtbar unter die Beschriftung (Sichtpruefung
+        // 08.08.2026). Gerechnet: Beschriftungs-Grundlinie liegt bei
+        // geo.y + BASE_LINE, die Oberkante des Markers bei 0.8 Anteil rund
+        // 0.25 ueber seiner eigenen Grundlinie - erst ab 0.02 Abstand bleibt
+        // sie unterhalb.
+        auto breite = messeLaufBreite(lookupM);
+        zeichneLaufBei(lookupM, geo.x + geo.width - PADDING - 0.02 - breite,
+                       breite, geo.y + geo.height - PADDING - 0.02);
+        cairo_set_font_size(cr, FONT_SIZE);
+    }
+
+    // Marker "geht weiter". Gibt es eine Blattzahl, steht sie allein da -
+    // ohne den Winkel, der frueher davorstand. Der Winkel kostete fast die
+    // halbe Markerbreite, und die blieb den Ziffern dann nicht: Auf einer
+    // Taste mit einem eingekreisten Zeichen war ">10" nicht mehr zu lesen
+    // (Sichtpruefung 08.08.2026). Ohne ihn passt dieselbe Zahl in derselben
+    // Ecke fast doppelt so gross.
+    //
+    // leaves 0 heisst Sondermodus-Einstieg - dahinter liegt keine zaehlbare
+    // Blattmenge. Dort bleibt der Winkel allein stehen, denn eine Zahl gibt
+    // es nicht und gar kein Marker waere eine andere Aussage.
+    void zeichneBlattzahlMarker(ComposeKeyView vorschau, KeyGeometry geo) {
+        if (vorschau.leaves == 0) {
+            zeichneEckMarker("›"w, geo, 0.55);
+            return;
+        }
+        wstring marker;
+        try {
+            marker = vorschau.leaves.to!wstring;
+        } catch (Exception e) {}
+        zeichneEckMarker(marker, geo, 0.55);
+    }
+
+    // Marker "verlaesst den Modus". Die Taste behaelt ihre gewoehnliche
+    // Fuellung und ihr Wurzelzeichen als Beschriftung - sie ist keine
+    // Ergebnistaste, sie beendet nur. Findet keine Schrift der Kette einen
+    // Glyphen fuer U+23CE, bleibt der Marker weg; das faellt in der
+    // Sichtpruefung auf, es geht nichts still verloren.
+    // U+23F9, eine gefuellte Flaeche. Der erste Versuch war U+23CE, das
+    // Return-Symbol - als Umriss auf Markergroesse war es kaum zu erkennen,
+    // und Vergroessern half nicht, weil der Glyph sich innerhalb seiner Zeile
+    // klein zeichnet (Sichtpruefung 08.08.2026). Eine geschlossene Flaeche
+    // traegt auf diesem Raum, ein Umriss nicht.
+    //
+    // Etwas groesser als die Blattzahl, weil er ohne Nachbarn dasteht und
+    // eine Zustandsaussage macht statt einer Menge.
+    void zeichneAusstiegMarker(KeyGeometry geo) {
+        zeichneEckMarker("⏹"w, geo, 0.6);
+    }
+
+    // Sachlich unterscheidet die vier Tastenarten genau wie das Blatt:
+    // Akzentbalken bei CHAR, muted bei VKEY, flaechig line-soft bei MODIFIER,
+    // gestrichelt bei EMPTY. Keine Fingerfaerbung - sie wuerde die Flaeche
+    // fluten, was der Design-Standard ausschliesst.
+    void fuelleTaste(KeyGeometry geo, KeyView view, float radius) {
+        float x = geo.x + PADDING;
+        float y = geo.y + PADDING;
+        float w = geo.width - 2*PADDING;
+        float h = geo.height - 2*PADDING;
+
+        if (configOskTheme != OSKTheme.Sachlich) {
+            roundRectangle(cr, x, y, w, h, radius);
+            cairo_set_source(cr, getKeyColor(geo.scancode));
+            cairo_fill(cr);
+            return;
+        }
+
+        roundRectangle(cr, x, y, w, h, radius);
+        cairo_set_source(cr, view.kind == KeyKind.MODIFIER ? SACHLICH_LINIE : SACHLICH_PAPIER);
         cairo_fill(cr);
 
-        showKeyLabelCentered(label, x, width, y + (height - 1) / 2 + BASE_LINE);
-    }
-
-    // Draw “regular” keys, i.e. keys with height 1
-    // First row
-    if (configOskNumberRow) {
-        drawKey(0, 0, 1, 1, Scancode(0x29, false));
-        drawKey(1, 0, 1, 1, Scancode(0x02, false));
-        drawKey(2, 0, 1, 1, Scancode(0x03, false));
-        drawKey(3, 0, 1, 1, Scancode(0x04, false));
-        drawKey(4, 0, 1, 1, Scancode(0x05, false));
-        drawKey(5, 0, 1, 1, Scancode(0x06, false));
-        drawKey(6, 0, 1, 1, Scancode(0x07, false));
-        drawKey(7, 0, 1, 1, Scancode(0x08, false));
-        drawKey(8, 0, 1, 1, Scancode(0x09, false));
-        drawKey(9, 0, 1, 1, Scancode(0x0A, false));
-        drawKey(10, 0, 1, 1, Scancode(0x0B, false));
-        drawKey(11, 0, 1, 1, Scancode(0x0C, false));
-        drawKey(12, 0, 1, 1, Scancode(0x0D, false));
-        drawKey(13, 0, 2, 1, Scancode(0x0E, false)); // Backspace
-    }
-    // Second row
-    drawKey(0, 1, 1.5, 1, Scancode(0x0F, false)); // Tab
-    drawKey(1.5, 1, 1, 1, Scancode(0x10, false));
-    drawKey(2.5, 1, 1, 1, Scancode(0x11, false));
-    drawKey(3.5, 1, 1, 1, Scancode(0x12, false));
-    drawKey(4.5, 1, 1, 1, Scancode(0x13, false));
-    drawKey(5.5, 1, 1, 1, Scancode(0x14, false));
-    drawKey(6.5, 1, 1, 1, Scancode(0x15, false));
-    drawKey(7.5, 1, 1, 1, Scancode(0x16, false));
-    drawKey(8.5, 1, 1, 1, Scancode(0x17, false));
-    drawKey(9.5, 1, 1, 1, Scancode(0x18, false));
-    drawKey(10.5, 1, 1, 1, Scancode(0x19, false));
-    drawKey(11.5, 1, 1, 1, Scancode(0x1A, false));
-    drawKey(12.5, 1, 1, 1, Scancode(0x1B, false));
-    if (configOskLayout == OSKLayout.ISO) {
-        // OEM key on third row
-        drawKey(12.75, 2, 1, 1, Scancode(0x2B, false));
-
-        // Big return key
-        string label = getKeyLabel(Scancode(0x1C, false));
-        if (label != "UNMAPPED") {
-            returnKey(cr, 13.5 + PADDING, 1 + PADDING, 1.5 - 2*PADDING, 1.25 - 2*PADDING, 1 - 2*PADDING, 1, CORNER_RADIUS);
-            cairo_set_source(cr, getKeyColor(Scancode(0x1C, false)));
-            cairo_fill(cr);
-            showKeyLabelCentered(label, 13.75, 1.25, 1.5 + BASE_LINE);
+        roundRectangle(cr, x, y, w, h, radius);
+        cairo_set_source(cr, SACHLICH_LINIE);
+        cairo_set_line_width(cr, HAIRLINE);
+        if (view.kind == KeyKind.EMPTY) {
+            double[2] strich = [0.06, 0.06];
+            cairo_set_dash(cr, strich.ptr, 2, 0);
         }
-    } else if (configOskLayout == OSKLayout.ANSI) {
-        // OEM key
-        drawKey(13.5, 1, 1.5, 1, Scancode(0x2B, false));
+        cairo_stroke(cr);
+        cairo_set_dash(cr, null, 0, 0);
 
-        // Third row return key
-        drawKey(12.75, 2, 2.25, 1, Scancode(0x1C, false));
-    }
-    // Third row
-    drawKey(0, 2, 1.75, 1, Scancode(0x3A, false)); // Capslock
-    drawKey(1.75, 2, 1, 1, Scancode(0x1E, false));
-    drawKey(2.75, 2, 1, 1, Scancode(0x1F, false));
-    drawKey(3.75, 2, 1, 1, Scancode(0x20, false));
-    drawKey(4.75, 2, 1, 1, Scancode(0x21, false));
-    drawKey(5.75, 2, 1, 1, Scancode(0x22, false));
-    drawKey(6.75, 2, 1, 1, Scancode(0x23, false));
-    drawKey(7.75, 2, 1, 1, Scancode(0x24, false));
-    drawKey(8.75, 2, 1, 1, Scancode(0x25, false));
-    drawKey(9.75, 2, 1, 1, Scancode(0x26, false));
-    drawKey(10.75, 2, 1, 1, Scancode(0x27, false));
-    drawKey(11.75, 2, 1, 1, Scancode(0x28, false));
-    // Fourth row
-    if (configOskLayout == OSKLayout.ISO) {
-        drawKey(0, 3, 1.25, 1, Scancode(0x2A, false)); // Shift
-        drawKey(1.25, 3, 1, 1, Scancode(0x56, false)); // OEM key
-    } else if (configOskLayout == OSKLayout.ANSI) {
-        drawKey(0, 3, 2.25, 1, Scancode(0x2A, false)); // Shift
-    }
-    drawKey(2.25, 3, 1, 1, Scancode(0x2C, false));
-    drawKey(3.25, 3, 1, 1, Scancode(0x2D, false));
-    drawKey(4.25, 3, 1, 1, Scancode(0x2E, false));
-    drawKey(5.25, 3, 1, 1, Scancode(0x2F, false));
-    drawKey(6.25, 3, 1, 1, Scancode(0x30, false));
-    drawKey(7.25, 3, 1, 1, Scancode(0x31, false));
-    drawKey(8.25, 3, 1, 1, Scancode(0x32, false));
-    drawKey(9.25, 3, 1, 1, Scancode(0x33, false));
-    drawKey(10.25, 3, 1, 1, Scancode(0x34, false));
-    drawKey(11.25, 3, 1, 1, Scancode(0x35, false));
-    drawKey(12.25, 3, 2.75, 1, Scancode(0x36, true)); // Shift
-    // Fifth row
-    drawKey(0, 4, 1.25, 1, Scancode(0x1D, false)); // Ctrl
-    drawKey(1.25, 4, 1.25, 1, Scancode(0x5B, true)); // Win
-    drawKey(2.5, 4, 1.25, 1, Scancode(0x38, false)); // Alt
-    drawKey(3.75, 4, 6.25, 1, Scancode(0x39, false)); // Space
-    drawKey(10, 4, 1.25, 1, Scancode(0x38, true)); // AltGr
-    drawKey(11.25, 4, 1.25, 1, Scancode(0x5C, true)); // Win
-    drawKey(13.75, 4, 1.25, 1, Scancode(0x1D, true)); // Ctrl
-    
-    if (configOskNumpad) {
-        // First row
-        drawKey(16, 0, 1, 1, Scancode(0x45, true));
-        drawKey(17, 0, 1, 1, Scancode(0x35, true));
-        drawKey(18, 0, 1, 1, Scancode(0x37, false));
-        drawKey(19, 0, 1, 1, Scancode(0x4A, false));
-        // Second row
-        drawKey(16, 1, 1, 1, Scancode(0x47, false));
-        drawKey(17, 1, 1, 1, Scancode(0x48, false));
-        drawKey(18, 1, 1, 1, Scancode(0x49, false));
-        // Third row
-        drawKey(16, 2, 1, 1, Scancode(0x4B, false));
-        drawKey(17, 2, 1, 1, Scancode(0x4C, false));
-        drawKey(18, 2, 1, 1, Scancode(0x4D, false));
-        // Fourth row
-        drawKey(16, 3, 1, 1, Scancode(0x4F, false));
-        drawKey(17, 3, 1, 1, Scancode(0x50, false));
-        drawKey(18, 3, 1, 1, Scancode(0x51, false));
-        // Fifth row
-        drawKey(16, 4, 2, 1, Scancode(0x52, false));
-        drawKey(18, 4, 1, 1, Scancode(0x53, false));
+        // Zeichentaste heisst: Sie erzeugt ein Zeichen. Ob das Layout sie als
+        // "char" oder als VK-Code abbildet, ist eine technische Frage und
+        // keine, die der Nutzer auf der Tastatur beantwortet sehen will.
+        bool traegtZeichen = view.codepoints.length > 0;
 
-        // Numpad Add
-        drawKey(19, 1, 1, 2, Scancode(0x4E, false));
-        // Numpad Return
-        drawKey(19, 3, 1, 2, Scancode(0x1C, true));
+        if (traegtZeichen) {
+            cairo_rectangle(cr, x, y, AKZENT_BREITE, h);
+            cairo_set_source(cr, SACHLICH_AKZENT);
+            cairo_fill(cr);
+        }
+
+        cairo_set_source(cr, traegtZeichen ? SACHLICH_TINTE : SACHLICH_MUTED);
+    }
+
+    void fuelleReturn(KeyView view, KeyGeometry geo) {
+        void pfad() {
+            returnKey(cr, geo.x + PADDING, geo.y + PADDING,
+                      1.5 - 2*PADDING, 1.25 - 2*PADDING, 1 - 2*PADDING, 1, CORNER_RADIUS);
+        }
+
+        if (configOskTheme != OSKTheme.Sachlich) {
+            pfad();
+            cairo_set_source(cr, getKeyColor(geo.scancode));
+            cairo_fill(cr);
+            return;
+        }
+
+        pfad();
+        cairo_set_source(cr, SACHLICH_PAPIER);
+        cairo_fill(cr);
+
+        pfad();
+        cairo_set_source(cr, SACHLICH_LINIE);
+        cairo_set_line_width(cr, HAIRLINE);
+        cairo_stroke(cr);
+
+        // Return ist eine VK-Taste (oder ohne Layout ein blosses Sinnbild) -
+        // in beiden Faellen zurueckhaltend, nie mit Akzentbalken.
+        cairo_set_source(cr, view.codepoints.length > 0 ? SACHLICH_TINTE : SACHLICH_MUTED);
+    }
+
+    if (KOPF > 0) {
+        // Eigene Flaeche, kein blosser Text: Das OSK-Fenster ist zwischen den
+        // Tasten durchsichtig, ohne Fuellung stuende der Streifen im
+        // Vordergrundfenster und waere dort teils unlesbar (Befund aus der
+        // Abnahme). getKeyColor mit einem Scancode ohne Fingerzuordnung
+        // liefert je Altschema dessen neutralen Tastenton - derselbe
+        // Untergrund, auf dem TEXT_COLOR ohnehin schon gelesen wird.
+        cairo_rectangle(cr, 0, 0, KEYBOARD_WIDTH, KOPF);
+        cairo_set_source(cr, configOskTheme == OSKTheme.Sachlich
+                         ? SACHLICH_PAPIER : getKeyColor(Scancode(0, false)));
+        cairo_fill(cr);
+
+        // Trennlinie unten, in der Linienfarbe des Schemas
+        cairo_set_source(cr, configOskTheme == OSKTheme.Sachlich ? SACHLICH_LINIE : TEXT_COLOR);
+        cairo_set_line_width(cr, HAIRLINE);
+        cairo_move_to(cr, 0, KOPF - HAIRLINE);
+        cairo_line_to(cr, KEYBOARD_WIDTH, KOPF - HAIRLINE);
+        cairo_stroke(cr);
+
+        cairo_set_font_size(cr, FONT_SIZE * 0.8);
+        cairo_set_source(cr, configOskTheme == OSKTheme.Sachlich ? SACHLICH_TINTE : TEXT_COLOR);
+
+        // Ganz links: welche Ebene gerade gilt, mit Blockname und
+        // Modifier-Satz. Sie steht vor der Sequenz, weil sie auch ohne
+        // Compose da ist und ihre Breite deshalb den Anfang bestimmt.
+        float textAnfang = 0.15;
+        if (zeigeEbene) {
+            auto lookupEbene = lookupGlyphs(ebenenText);
+            if (lookupEbene.found) {
+                auto breite = messeLaufBreite(lookupEbene);
+                zeichneLaufBei(lookupEbene, textAnfang, breite, KOPF - 0.22);
+                textAnfang += breite + 0.4;
+            }
+        }
+
+        // Daneben: die getippte Sequenz in Werkzeugnotation bzw. der
+        // Sondermodus-Puffer.
+        if (composeAnzeige !is null && composeAnzeige.sequenz.length > 0) {
+            auto lookupSeq = lookupGlyphs(composeAnzeige.sequenz);
+            if (lookupSeq.found) {
+                auto breite = messeLaufBreite(lookupSeq);
+                zeichneLaufBei(lookupSeq, textAnfang, breite, KOPF - 0.22);
+            }
+        }
+
+        // Rechts: die Bilanz - nur im Baummodus, im Sondermodus gibt es
+        // keinen Knoten und keine Bilanz.
+        if (composeAnzeige !is null && !composeAnzeige.sonderModus) {
+            auto o = composeAnzeige.overlay;
+            wstring bilanz;
+            try {
+                bilanz = format("%s %s · %s %s", o.here,
+                                appString(AppString.OSK_COMPOSE_HERE), o.elsewhere,
+                                appString(AppString.OSK_COMPOSE_ELSEWHERE)).to!wstring;
+            } catch (Exception e) {}
+            if (bilanz.length > 0) {
+                auto lookupBilanz = lookupGlyphs(bilanz);
+                if (lookupBilanz.found) {
+                    auto breite = messeLaufBreite(lookupBilanz);
+                    zeichneLaufBei(lookupBilanz, KEYBOARD_WIDTH - 0.15 - breite, breite, KOPF - 0.22);
+                }
+            }
+        }
+
+        cairo_set_font_size(cr, FONT_SIZE);
+        cairo_translate(cr, 0, KOPF);
+    }
+
+    // Die Tastaturgeometrie steht in keyboardview.d, nicht mehr in einer Folge
+    // einzelner Zeichenaufrufe.
+    auto boardKeys = boardGeometry(
+        configOskLayout == OSKLayout.ISO ? BoardLayout.ISO : BoardLayout.ANSI,
+        configOskNumberRow,
+        configOskNumpad);
+
+    foreach (geo; boardKeys) {
+        auto view = viewFor(geo.scancode);
+
+        // Ob und wie eine Taste beschriftet ist, entscheidet
+        // keyboardview.keyLabel - dieselbe Funktion, die auch sheet.d fragt.
+        // Die zwei Darstellungsuebersetzungen (Strg/Ctrl, M3/Sym) bleiben
+        // hier, sie wirken auf das Ergebnis von keyLabel.
+        auto beschriftung = keyLabel(layout, view);
+        if (!beschriftung.draw) continue;
+        string label = labelFor(view.kind, beschriftung.text);
+
+        // Compose-Vorschau: Waehrend einer Sequenz (nicht im Sondermodus)
+        // bedeutet jede Nicht-Modifier-Taste einen der drei Faelle RESULT/
+        // BRANCH/NONE. Modifier bleiben normal - sie gehen nicht durch
+        // compose() und wechseln waehrend der Sequenz weiter die Ebene.
+        const(ComposeKeyView)* vorschau = null;
+        bool vorschauAktiv = composeAnzeige !is null && !composeAnzeige.sonderModus
+                             && view.kind != KeyKind.MODIFIER;
+        if (vorschauAktiv) {
+            vorschau = geo.scancode in composeAnzeige.overlay.keys;
+
+            if (vorschau is null) {
+                // NONE: Taste braeche die Sequenz ab - gestrichelt leer,
+                // ohne Beschriftung (Spec 5.2). Return behaelt seine
+                // Kontur, laesst aber ebenfalls die Beschriftung weg.
+                KeyView leer = view;
+                leer.kind = KeyKind.EMPTY;
+                leer.codepoints = [];
+                if (geo.shape == KeyShape.ISO_RETURN) {
+                    fuelleReturn(leer, geo);
+                } else {
+                    fuelleTaste(geo, leer, CORNER_RADIUS);
+                }
+                continue;
+            }
+
+            if (vorschau.kind == ComposeKeyKind.RESULT
+                || vorschau.kind == ComposeKeyKind.RESULT_BRANCH) {
+                // Das Ergebniszeichen ersetzt die Beschriftung; der
+                // Akzentbalken sagt wortwoertlich "erzeugt ein Zeichen".
+                // RESULT_BRANCH zeigt zusaetzlich den Blattzahl-Marker von
+                // BRANCH - die Taste liefert beides, also zeigt sie beides.
+                label = vorschau.result.toUTF8;
+                KeyView ergebnis = view;
+                ergebnis.codepoints = [dchar(0x20)];  // nur Akzent-Flag
+                if (geo.shape == KeyShape.ISO_RETURN) {
+                    fuelleReturn(ergebnis, geo);
+                    showKeyLabelCentered(label, geo.x + 0.25, 1.25, geo.y + 0.5 + BASE_LINE);
+                } else {
+                    fuelleTaste(geo, ergebnis, CORNER_RADIUS);
+                    zeigeTastenBeschriftung(label, geo, ergebnis);
+                }
+                if (vorschau.kind == ComposeKeyKind.RESULT_BRANCH) {
+                    zeichneBlattzahlMarker(*vorschau, geo);
+                }
+                continue;
+            }
+            // BRANCH und EXIT fallen durch: normale Fuellung und
+            // Beschriftung, danach der jeweilige Marker. EXIT braucht keine
+            // Ersatzbeschriftung - die Taste traegt ohnehin schon ihr
+            // Wurzelzeichen, und genau das ist die richtige Auskunft.
+        }
+
+        if (geo.shape == KeyShape.ISO_RETURN) {
+            fuelleReturn(view, geo);
+            showKeyLabelCentered(label, geo.x + 0.25, 1.25, geo.y + 0.5 + BASE_LINE);
+        } else {
+            fuelleTaste(geo, view, CORNER_RADIUS);
+            zeigeTastenBeschriftung(label, geo, view);
+        }
+
+        if (vorschau !is null && vorschau.kind == ComposeKeyKind.BRANCH) {
+            zeichneBlattzahlMarker(*vorschau, geo);
+        } else if (vorschau !is null && vorschau.kind == ComposeKeyKind.EXIT) {
+            zeichneAusstiegMarker(geo);
+        }
     }
 
     // Cairo cleanup    
@@ -497,6 +825,13 @@ void drawOsk(HWND hwnd, NeoLayout *layout, uint layer, bool capslock) {
 }
 
 void roundRectangle(cairo_t *cr, float x, float y, float w, float h, float r) {
+    if (r <= 0) {
+        // Sachlich zeichnet ohne Rundung (border-radius: 0). Ein cairo_arc mit
+        // Radius 0 waere zwar geometrisch richtig, aber unnoetig.
+        cairo_rectangle(cr, x, y, w, h);
+        return;
+    }
+
     const float QR = M_PI / 2;
 
     cairo_save(cr);
@@ -543,8 +878,8 @@ LRESULT oskWndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_NCHITTEST:
         // Manually implement left and right resize handles, all other points drag the window
+        // Nur die x-Koordinate wird ausgewertet, senkrecht gibt es keine Griffe
         short x = cast(short) (lParam & 0xFFFF);
-        short y = cast(short) ((lParam >> 16) & 0xFFFF);
 
         const GRAB_WIDTH = 20;
         
@@ -617,4 +952,20 @@ void centerOskOnScreen(HWND hwnd) {
         workArea.left + (workArea.right - workArea.left - winWidth) / 2,
         workArea.bottom - winHeight - winBottomOffset,
         winWidth, winHeight, SWP_NOZORDER);
+}
+
+unittest {
+    // Die ausgelieferten Konfigurationen muessen ein Schema nennen, das es
+    // gibt - ein Tippfehler wuerde erst beim Start des Nutzers auffallen,
+    // dort aber als Ausnahme beim Laden der Konfiguration.
+    import std.json : parseJSON;
+    import std.file : readText;
+
+    foreach (datei; ["config.default.json", "config.neo.json",
+                     "config.neoqwertz.json", "config.noted.json"]) {
+        auto config = parseJSON(readText(datei));
+        auto schema = config["osk"]["theme"].str.to!OSKTheme;
+        assert(schema == OSKTheme.Sachlich,
+               datei ~ ": Vorgabe ist seit Paket 5b 'Sachlich'");
+    }
 }

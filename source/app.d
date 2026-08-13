@@ -4,9 +4,12 @@ import core.stdc.string;
 import core.stdc.wchar_;
 import core.stdc.stdlib : exit;
 
-import reneo;
+import ananeo;
 import mapping;
+import layerlock : LockTrigger, parseLockTriggers, lockLayerLabel;
 import composer;
+import debuglog;
+import keysyms;
 import trayicon;
 import osk;
 import localization : initLocalization, appString, appStringwz, Language, AppString, hotkeyString;
@@ -19,6 +22,11 @@ import std.path;
 import std.stdio;
 import std.json;
 import std.regex : matchFirst;
+
+import core.sys.windows.shellapi : ShellExecute;
+import sheet : renderSheet;
+import keyboardview : BoardLayout;
+import composeview : ComposeDisplay, composeOverlay;
 
 HHOOK hHook;
 HWINEVENTHOOK foregroundHook;
@@ -71,11 +79,20 @@ bool foregroundWindowChanged;
 bool previousNumlockState;
 
 bool oskOpen;
+// Wurde die Bildschirmtastatur automatisch durch eine Rastung geoeffnet?
+// Nur dann schliessen wir sie beim Loesen wieder.
+bool oskOpenedByLock;
+// Wurde die Bildschirmtastatur automatisch durch eine Compose-Sequenz
+// geoeffnet? Nur dann schliessen wir sie am Sequenzende wieder - dasselbe
+// Muster wie oskOpenedByLock.
+bool oskOpenedByCompose;
 
 bool configStandaloneMode;
 NeoLayout *configStandaloneLayout;
 bool configAutoNumlock;
-bool configEnableMod4Lock;
+bool configLocksOskAutoShow;
+bool configComposeOskAutoShow;
+LockTrigger[] configLockTriggers;
 bool configFilterNeoModifiers;
 HotkeyConfig configHotkeyToggleActivation;
 HotkeyConfig configHotkeyToggleOSK;
@@ -95,6 +112,7 @@ HMENU contextMenu;
 HMENU layoutMenu;
 HICON iconEnabled;
 HICON iconDisabled;
+HICON iconLocked;
 
 // set in checkKeyboardLayout (if not null) and used when translating characters to native key combos
 HKL lastInputLocale;
@@ -106,6 +124,7 @@ const UINT ID_TRAY_ACTIVATE_CONTEXTMENU = 0x1100;
 const UINT ID_TRAY_RELOAD_CONTEXTMENU = 0x1101;
 const UINT ID_TRAY_OSK_CONTEXTMENU = 0x1102;
 const UINT ID_TRAY_ONE_HANDED_MODE_CONTEXTMENU = 0x1103;
+const UINT ID_TRAY_SHEET_CONTEXTMENU = 0x1104;
 const UINT ID_TRAY_VERSION = 0x110E;
 const UINT ID_TRAY_QUIT_CONTEXTMENU = 0x110F;
 const UINT ID_LAYOUTMENU = 0x1200;
@@ -116,7 +135,7 @@ const UINT ID_HOTKEY_ONE_HANDED_MODE = 0x003;
 
 const UINT LAYOUTMENU_POSITION = 0;
 
-const APPNAME            = "ReNeo"w;
+const APPNAME            = "AnaNeo"w;
 string executableDir;
 
 TrayIcon trayIcon;
@@ -328,10 +347,20 @@ LRESULT WndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam) nothrow {
             toggleOneHandedMode();
             break;
 
+            case ID_TRAY_SHEET_CONTEXTMENU:
+            erzeugeBelegungsblatt();
+            break;
+
             case ID_TRAY_RELOAD_CONTEXTMENU:
             debugWriteln("Re-initialize...");
             initialize();
-            updateOSK();
+            // Eine bestehende Rastung zeigt nach dem Neuladen auf Trigger, die
+            // es so nicht mehr geben muss - deshalb loesen wir sie.
+            clearAllLocks();
+            // Ebenso koennen gegessene Chord-Haupttasten auf Trigger zeigen,
+            // die nach dem Neuladen nicht mehr existieren.
+            chordVkDown.clear();
+            updateLockState();
             break;
 
             case ID_TRAY_QUIT_CONTEXTMENU:
@@ -371,6 +400,28 @@ LRESULT WndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam) nothrow {
         }
         break;
 
+        case WM_UPDATELOCKSTATE:
+        updateLockState();
+        break;
+
+        case WM_COMPOSECHANGED:
+        updateComposeState();
+        break;
+
+        case WM_SETTINGCHANGE:
+        // Windows meldet den Wechsel zwischen hellem und dunklem Apps-Modus als
+        // WM_SETTINGCHANGE mit lParam "ImmersiveColorSet". Der Nachrichtentyp
+        // selbst ist aber unspezifisch - Richtlinienaenderungen, Gebietsschema,
+        // Druckerwarteschlange und mehr kommen ueber denselben Weg. Ohne den
+        // Vergleich wuerde jede davon ein Registry-Lesen und ein volles
+        // updateOSK() ausloesen, obwohl nur "Sachlich" sich dafuer interessiert.
+        if (lParam != 0
+            && wcscmp(cast(const(wchar)*) lParam, "ImmersiveColorSet"w.ptr) == 0) {
+            refreshOskTheme();
+            updateOSK();
+        }
+        break;
+
         default:  // Pass everything else to OSK
         if (msg == taskBarCreatedMsg) {
             /** If the explorer process is restarted, tray icons need to be readded,
@@ -394,13 +445,133 @@ LRESULT WndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam) nothrow {
 // Redraw OSK. WARNING: This function blocks and shouldn't be called from the key event handler
 void updateOSK() nothrow {
     try {
-        drawOsk(hwnd, activeLayout, activeLayer, capslock);
+        // Die Compose-Anzeige entsteht hier und nicht in osk.d: drawOsk
+        // bleibt reiner Verbraucher, wie bei keyboardview.d (Spec 4.3).
+        ComposeDisplay anzeige;
+        ComposeDisplay* zeiger = null;
+        if (composeSpecialActive()) {
+            anzeige.sonderModus = true;
+            anzeige.sequenz = composeSpecialBuffer();
+            zeiger = &anzeige;
+        } else if (auto knoten = currentComposeNode()) {
+            anzeige.sequenz = composeSequenceString(currentComposeKeysyms()).to!wstring;
+            if (activeLayout !is null) {
+                uint erstEbene, zweitEbene;
+                composeEbenenpaar(erstEbene, zweitEbene);
+                anzeige.overlay = composeOverlay(knoten, activeLayout, erstEbene, zweitEbene);
+            }
+            zeiger = &anzeige;
+        }
+
+        // Der Ebenenstreifen erscheint nur bei aktiver Rastung - dort geht
+        // der Ueberblick verloren, welche Nummer der Block gerade hat. Beim
+        // blossen Halten von Mod3/Mod4 bliebe er sonst staendig am Auf- und
+        // Zuklappen.
+        wstring ebenenText;
+        if (!currentLock.empty) {
+            ebenenText = lockLayerLabel(appString(AppString.OSK_LAYER), activeLayer,
+                                        currentLock.set, currentLock.name).to!wstring;
+        }
+
+        drawOsk(hwnd, activeLayout, activeLayer, capslock,
+                heldModifierQuery(), !currentLock.empty, zeiger, ebenenText);
     } catch (Exception e) {}
 }
 
 // Schedule an OSK redraw on the message queue. Safe to call from the key event handler
 void updateOSKAsync() nothrow {
     PostMessage(hwnd, WM_DRAWOSK, 0, 0);
+}
+
+// Erzeugt das Belegungsblatt aus dem, was das LAUFENDE Programm geladen hat -
+// nicht aus den Dateien auf der Platte. Genau deshalb gibt es diesen Weg neben
+// dem Werkzeug: Er zeigt garantiert den Zustand, den der Nutzer gerade benutzt.
+void erzeugeBelegungsblatt() {
+    if (activeLayout is null) {
+        debugWriteln("Kein Layout geladen - kein Belegungsblatt.");
+        // debugWriteln ist im Release-Build ein Nichts (weder Konsole noch
+        // Logdatei) - ohne diese Meldung klickt der Nutzer ins Leere, ohne
+        // je zu erfahren, warum nichts passiert.
+        MessageBox(hwnd, appStringwz(AppString.ERROR_SHEET_NO_LAYOUT),
+                   appStringwz(AppString.MENU_SHEET), MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    try {
+        auto html = renderSheet(activeLayout,
+                                configOskLayout == OSKLayout.ISO ? BoardLayout.ISO : BoardLayout.ANSI,
+                                configOskNumberRow, configOskNumpad, configLockTriggers);
+        auto pfad = buildPath(executableDir, "ananeo-belegung-" ~ activeLayout.name.to!string ~ ".html");
+        std.file.write(pfad, html);
+        debugWriteln("Belegungsblatt geschrieben: ", pfad);
+
+        auto ergebnis = ShellExecute(null, "open".toUTF16z, pfad.toUTF16z, null, null, SW_SHOWNORMAL);
+        // Laut ShellExecute-Doku heisst ein Rueckgabewert <= 32 fehlgeschlagen.
+        // Die Datei ist in diesem Fall trotzdem geschrieben - eine andere
+        // Meldung als "konnte nicht geschrieben werden".
+        if (cast(size_t) ergebnis <= 32) {
+            debugWriteln("ShellExecute fuer das Belegungsblatt fehlgeschlagen, Rueckgabewert ",
+                         cast(size_t) ergebnis);
+            MessageBox(hwnd, appStringwz(AppString.ERROR_SHEET_NOT_OPENED, pfad),
+                       appStringwz(AppString.MENU_SHEET), MB_OK | MB_ICONWARNING);
+        }
+    } catch (Exception e) {
+        debugWriteln("Belegungsblatt fehlgeschlagen: ", e.msg);
+        MessageBox(hwnd, appStringwz(AppString.ERROR_SHEET_FAILED, e.msg),
+                   appStringwz(AppString.MENU_SHEET), MB_OK | MB_ICONERROR);
+    }
+}
+
+const UINT WM_UPDATELOCKSTATE = WM_APP + 2;
+
+// Rueckmeldung ueber eine geaenderte Rastung auf die Nachrichtenschlange legen.
+// Aus dem Hook heraus darf nichts Blockierendes passieren, deshalb PostMessage -
+// dasselbe Muster wie updateOSKAsync.
+void updateLockStateAsync() nothrow {
+    PostMessage(hwnd, WM_UPDATELOCKSTATE, 0, 0);
+}
+
+const UINT WM_COMPOSECHANGED = WM_APP + 3;
+
+// Sichtbarer Compose-Zustand hat sich geaendert (Start, Fortschritt,
+// Sondermodus-Eingabe oder Ende). Aus dem Hook heraus darf nichts
+// Blockierendes passieren, deshalb PostMessage - dasselbe Muster wie
+// updateOSKAsync und updateLockStateAsync.
+void updateComposeStateAsync() nothrow {
+    PostMessage(hwnd, WM_COMPOSECHANGED, 0, 0);
+}
+
+// Laeuft in der Fensterprozedur, darf also blockieren.
+void updateComposeState() nothrow {
+    bool laeuft = composeActive();
+    if (configComposeOskAutoShow) {
+        if (laeuft && !oskOpen) {
+            toggleOSK();
+            oskOpenedByCompose = true;
+        } else if (!laeuft && oskOpenedByCompose) {
+            if (oskOpen) toggleOSK();
+            oskOpenedByCompose = false;
+        }
+    }
+    updateOSK();
+}
+
+// Laeuft in der Fensterprozedur, darf also blockieren.
+void updateLockState() nothrow {
+    updateTrayIcon();
+    updateTrayTooltip();
+
+    if (configLocksOskAutoShow) {
+        if (!currentLock.empty && !oskOpen) {
+            toggleOSK();
+            oskOpenedByLock = true;
+        } else if (currentLock.empty && oskOpenedByLock) {
+            if (oskOpen) toggleOSK();
+            oskOpenedByLock = false;
+        }
+    }
+
+    updateOSK();
 }
 
 void toggleOSK() nothrow {
@@ -434,12 +605,24 @@ void modifyMenuItemString(HMENU hMenu, UINT id, string text) {
     SetMenuItemInfo(hMenu, id, 0, &mii);
 }
 
+void updateTrayIcon() nothrow {
+    try {
+        if (!keyboardHookActive) {
+            trayIcon.setIcon(iconDisabled);
+        } else if (!currentLock.empty) {
+            trayIcon.setIcon(iconLocked);
+        } else {
+            trayIcon.setIcon(iconEnabled);
+        }
+    } catch (Exception e) {}
+}
+
 void updateContextMenu() {
+    updateTrayIcon();
+
     if (!keyboardHookActive) {
-        trayIcon.setIcon(iconDisabled);
         modifyMenuItemString(contextMenu, ID_TRAY_ACTIVATE_CONTEXTMENU, appString(AppString.MENU_ENABLE, hotkeyToggleActivationStr));
     } else {
-        trayIcon.setIcon(iconEnabled);
         modifyMenuItemString(contextMenu, ID_TRAY_ACTIVATE_CONTEXTMENU, appString(AppString.MENU_DISABLE, hotkeyToggleActivationStr));
     }
 
@@ -461,7 +644,15 @@ void updateTrayTooltip() nothrow {
     if (resultingHookState && activeLayout) {
         layoutName = (standaloneModeActive ? ""w : "+"w) ~ activeLayout.name;
     }
-    trayIcon.setTip((APPNAME ~ " (" ~ layoutName ~ ")").to!(wchar[]));
+
+    wstring lockInfo;
+    if (resultingHookState && !currentLock.empty) {
+        try {
+            lockInfo = ", "w ~ appString(AppString.TOOLTIP_LOCKED, currentLock.name).to!wstring;
+        } catch (Exception e) {}
+    }
+
+    trayIcon.setTip((APPNAME ~ " (" ~ layoutName ~ lockInfo ~ ")").to!(wchar[]));
 }
 
 void onHookStateUpdate() nothrow {
@@ -489,7 +680,19 @@ void onHookStateUpdate() nothrow {
         setNumlockState(previousNumlockState);
     }
 
+    // resetHookStates() kann eine laufende Rastung loeschen, ohne dass
+    // updateLockState() (blockierend, nur Fensterprozedur) dazwischen laeuft -
+    // Icon sonst weiterhin auf "gerastet" haengen bleibt.
+    updateTrayIcon();
     updateTrayTooltip();
+
+    // War das OSK durch die geloeschte Rastung geoeffnet worden, bleibt das
+    // Flag sonst faelschlich gesetzt. Das eigentliche Schliessen bleibt
+    // updateLockState() vorbehalten - hier wird nur das Flag nachgezogen,
+    // damit ein spaeterer Lauf kein fremdes OSK schliesst.
+    if (currentLock.empty && oskOpenedByLock) {
+        oskOpenedByLock = false;
+    }
 
     previousResultingHookState = resultingHookState;
 }
@@ -564,16 +767,165 @@ HotkeyConfig parseHotkey(string hotkeyString) {
     return config;
 }
 
+// Einmalige, idempotente Migrationen alter Konfigurationsdateien. Laeuft bei
+// jedem Start vor dem Zusammenfuehren mit config.default.json - jeder Block
+// muss deshalb mehrfache Anwendung vertragen.
+void migrateConfig(ref JSONValue userConfigJson, ref JSONValue defaultConfigJson) {
+    migriereMod4Lock(userConfigJson, defaultConfigJson);
+    migriereComposeModulNamen(userConfigJson);
+    ergaenzeNeueComposeModule(userConfigJson);
+}
+
+/// Stand der Konfigurationsstruktur. Zaehlt eigenstaendig hoch, nicht mit der
+/// Programmversion - er beantwortet genau eine Frage: Welche
+/// Ergaenzungsschritte hat diese config.json schon gesehen?
+///
+/// Damit darf eine Migrationsstufe etwas HINZUFUEGEN, was ohne Marker
+/// unmoeglich waere: Sie laeuft bei jedem Start und koennte "noch nie
+/// ausgeliefert" nicht von "bewusst entfernt" unterscheiden. Genau daran ist
+/// die Farbschema-Stufe gescheitert (Kommentar weiter unten). Eine fehlende
+/// Angabe zaehlt als 0, also als Konfiguration von vor der Einfuehrung.
+enum CONFIG_VERSION = 1;   // 1: Compose-Inhaltsrunde, ananeo-kreis
+
+/// Ein neu ausgeliefertes Compose-Modul und der Ort, an dem es in eine
+/// gewachsene Liste gehoert. `nach` ist ein Anker, kein Index: Die
+/// Listenreihenfolge ist die Ladereihenfolge, und wer bei einer Kollision
+/// gewinnt, haengt daran. Steht der Anker nicht in der Liste, wird angehaengt.
+private struct NeuesComposeModul {
+    string name;
+    string nach;
+    long abVersion;   /// erst ergaenzen, wenn die Config aelter ist als dies
+}
+
+private static immutable NeuesComposeModul[] NEUE_COMPOSE_MODULE = [
+    NeuesComposeModul("ananeo-kreis", "ananeo-hochtief", 1),   // Inhaltsrunde
+];
+
+private void ergaenzeNeueComposeModule(ref JSONValue userConfigJson) {
+    import std.algorithm : canFind, map;
+    import std.array : array;
+    import std.json : JSONType;
+
+    // Fehlende oder unbrauchbare Angabe zaehlt als 0: eine Konfiguration von
+    // vor der Einfuehrung des Markers, die alle Schritte noch vor sich hat.
+    long geseheneVersion = 0;
+    if (auto marke = "configVersion" in userConfigJson) {
+        if (marke.type == JSONType.INTEGER) geseheneVersion = marke.integer;
+    }
+
+    // Den Marker IMMER auf den aktuellen Stand setzen, auch wenn diese Config
+    // gar keine composeModules hat - sonst laufen die Schritte spaeter erneut.
+    scope(exit) userConfigJson["configVersion"] = JSONValue(CONFIG_VERSION);
+
+    if ("composeModules" !in userConfigJson) return;
+
+    auto namen = userConfigJson["composeModules"].array.map!(e => e.str).array;
+
+    foreach (neu; NEUE_COMPOSE_MODULE) {
+        if (geseheneVersion >= neu.abVersion) continue;
+        if (namen.canFind(neu.name)) continue;
+
+        JSONValue[] ergaenzt;
+        bool gesetzt = false;
+        foreach (name; namen) {
+            ergaenzt ~= JSONValue(name);
+            if (name == neu.nach) { ergaenzt ~= JSONValue(neu.name); gesetzt = true; }
+        }
+        if (!gesetzt) ergaenzt ~= JSONValue(neu.name);
+
+        namen = ergaenzt.map!(e => e.str).array;
+        userConfigJson["composeModules"] = JSONValue(ergaenzt);
+        debugWriteln("Migration: Compose-Modul \"", neu.name, "\" ergaenzt.");
+    }
+}
+
+// Umbenannte Moduldateien in "composeModules" nachziehen. Alter Name -> neuer.
+//
+// Diese Stufe darf es geben, obwohl migrateConfig bei JEDEM Start laeuft und
+// der Kommentar unten vor genau solchen Stufen warnt: Der alte Name zeigt auf
+// eine Datei, die nicht mehr existiert. Er kann deshalb keine ausdrueckliche
+// Wahl sein, sondern nur ein Rest - anders als "ColorClassic", das ein
+// gueltiger Wert blieb. Bewusst NICHT migriert wird das Ergaenzen neuer Module
+// (ananeo-kreis): Ein fehlender Name kann gewollt sein, ein toter nicht.
+private static immutable string[2][] UMBENANNTE_COMPOSE_MODULE = [
+    ["hochtief", "ananeo-hochtief"],   // Compose-Inhaltsrunde, 04.08.2026
+];
+
+/// Meldungstext fuer konfigurierte Module ohne Datei - leer, wenn alles
+/// gefunden wurde. Eigene Funktion statt einer Bedingung mitten in
+/// initialize(): Die laesst sich pruefen, initialize() ruft Win32.
+string unbekannteComposeModuleMeldung(const(string)[] unbekannt) {
+    import std.array : join;
+
+    if (unbekannt.length == 0) return "";
+    return appString(AppString.ERROR_COMPOSE_MODULE_MISSING, unbekannt.join(", "));
+}
+
+private void migriereComposeModulNamen(ref JSONValue userConfigJson) {
+    if ("composeModules" !in userConfigJson) return;
+
+    // Ganze Eintraege vergleichen, nicht im Text ersetzen: "hochtief" ist ein
+    // Teilstring von "ananeo-hochtief", eine Ersetzung liefe beim naechsten
+    // Start noch einmal und baute "ananeo-ananeo-hochtief".
+    foreach (ref JSONValue eintrag; userConfigJson["composeModules"].array) {
+        foreach (paar; UMBENANNTE_COMPOSE_MODULE) {
+            if (eintrag.str != paar[0]) continue;
+            eintrag = JSONValue(paar[1]);
+            debugWriteln("Migration: Compose-Modul \"", paar[0], "\" heisst jetzt \"",
+                paar[1], "\".");
+        }
+    }
+}
+
+// "enableMod4Lock" ist durch die "locks"-Sektion ersetzt worden. Stand die
+// Option auf false, wollte der Nutzer den Lock ausdruecklich nicht - er
+// bekommt dann eine "locks"-Sektion ohne die Trigger, die etwas rasten.
+private void migriereMod4Lock(ref JSONValue userConfigJson, ref JSONValue defaultConfigJson) {
+    if ("enableMod4Lock" !in userConfigJson) return;
+
+    bool mod4LockErlaubt = userConfigJson["enableMod4Lock"].boolean;
+    userConfigJson.object.remove("enableMod4Lock");
+    debugWriteln("Migration: \"enableMod4Lock\" entfernt (war ", mod4LockErlaubt, ").");
+
+    if (mod4LockErlaubt || "locks" in userConfigJson) return;
+
+    JSONValue[] ohneLock;
+    foreach (JSONValue eintrag; defaultConfigJson["locks"]["triggers"].array) {
+        if ("lock" in eintrag) continue;
+        ohneLock ~= eintrag;
+    }
+
+    // Frisches Objekt bauen, nicht das Vorgabeobjekt veraendern - JSONValue
+    // teilt sich beim Zuweisen die inneren Verweise.
+    userConfigJson["locks"] = JSONValue([
+        "oskAutoShow": defaultConfigJson["locks"]["oskAutoShow"],
+        "triggers": JSONValue(ohneLock)
+    ]);
+    debugWriteln("Migration: \"locks\" ohne rastende Trigger angelegt.");
+}
+
+// Hier stand bis zur OSK-Vorschau-Runde migriereFarbschema: Seit Paket 5b ist
+// "Sachlich" das Vorgabeschema, und weil der Konfigurations-Merge einen
+// bestehenden Wert nicht ersetzt, schrieb eine Migrationsstufe den alten
+// Vorgabewert "ColorClassic" auf "Sachlich" um. Sie war als einmaliger Anstoss
+// gedacht, lief aber bei JEDEM Start - "ColorClassic" liess sich dadurch gar
+// nicht mehr auswaehlen (Befund aus der Abnahme am 03.08.2026). Entfernt statt
+// nachgebessert: Gewachsene Konfigurationen sind seit mehreren Runden
+// umgestellt, wer den Wert heute in der config.json stehen hat, meint ihn.
+
 void initialize() {
     try {
+        // Muss vor initCompose laufen: der Compose-Baum wird ueber Keysyms
+        // aufgebaut.
         initKeysyms(executableDir);
-        initCompose(executableDir);
 
         // Load default config (shipped with the program) as a base
         auto configJson = parseJSONFile("config.default.json");
         // Load user config if it exists
         if (exists(buildPath(executableDir, "config.json"))) {
             auto userConfigJson = parseJSONFile("config.json");
+
+            migrateConfig(userConfigJson, configJson);
 
             // Overwrite values from default config with user config settings
             void copyJsonObjectOverOther(ref JSONValue source, ref JSONValue destination) {
@@ -596,6 +948,26 @@ void initialize() {
 
         // First of all, set the langage so that subsequent stuff is localized correctly
         initLocalization(configJson["language"].str.toUpper.to!Language);
+
+        // Braucht die zusammengefuehrte Konfiguration: "composeModules" legt
+        // fest, welche Moduldateien in welcher Reihenfolge geladen werden.
+        string[] composeModules;
+        foreach (JSONValue eintrag; configJson["composeModules"].array) {
+            composeModules ~= eintrag.str;
+        }
+        initCompose(executableDir, composeModules);
+
+        // Ein Name ohne Datei kostet einen ganzen Compose-Zweig, ohne dass
+        // irgendetwas auffiele - das Programm laeuft ja. Deshalb sichtbar
+        // machen und nicht nur ins Debug-Log schreiben, das ein Release-Build
+        // gar nicht fuehrt. Kein Abbruch: Die uebrigen Module sind geladen,
+        // ein Tippfehler soll den Start nicht verhindern.
+        auto fehlendeModule = unbekannteComposeModuleMeldung(composeUnknownModules);
+        if (fehlendeModule.length > 0) {
+            debugWriteln(fehlendeModule);
+            MessageBox(hwnd, fehlendeModule.toUTF16z,
+                appStringwz(AppString.ERROR_WHILE_INITIALIZING), MB_OK | MB_ICONWARNING);
+        }
 
 
         auto layoutsJson = parseJSONFile("layouts.json");
@@ -627,7 +999,9 @@ void initialize() {
         }
 
         configAutoNumlock = configJson["autoNumlock"].boolean;
-        configEnableMod4Lock = configJson["enableMod4Lock"].boolean;
+        configLocksOskAutoShow = configJson["locks"]["oskAutoShow"].boolean;
+        configComposeOskAutoShow = configJson["compose"]["oskAutoShow"].boolean;
+        configLockTriggers = parseLockTriggers(configJson["locks"]);
         configFilterNeoModifiers = configJson["filterNeoModifiers"].boolean;
 
         // Parse hotkeys (might be null -> user doesn't want to use hotkey)
@@ -666,6 +1040,195 @@ void initialize() {
     debugWriteln("Initialization complete!");
 }
 
+unittest {
+    // Gegenprobe zur entfernten Farbschema-Migration: migrateConfig laeuft bei
+    // JEDEM Start, eine Stufe, die einen Schemanamen umschreibt, macht diesen
+    // Namen dauerhaft unwaehlbar. Genau das ist mit "ColorClassic" passiert
+    // (Abnahme vom 03.08.2026). Der Test haelt fest, dass alle fuenf Schemata
+    // die Migration unveraendert ueberstehen.
+    import std.json : parseJSON;
+
+    auto vorgabe = parseJSON(`{
+        "osk": {"theme": "Sachlich"},
+        "locks": {"oskAutoShow": false, "triggers": []}
+    }`);
+
+    foreach (schema; ["Grey", "NeoBlue", "ColorClassic", "ColorGreen", "Sachlich"]) {
+        auto config = parseJSON(`{"osk": {"theme": "` ~ schema ~ `"}}`);
+        migrateConfig(config, vorgabe);
+        assert(config["osk"]["theme"].str == schema,
+            "migrateConfig hat das Farbschema umgeschrieben: " ~ schema);
+        migrateConfig(config, vorgabe);
+        assert(config["osk"]["theme"].str == schema, "zweiter Lauf hat etwas veraendert");
+    }
+
+    // Konfiguration ganz ohne "osk"-Sektion darf nicht werfen
+    auto ohneOsk = parseJSON(`{"standaloneMode": true}`);
+    migrateConfig(ohneOsk, vorgabe);
+}
+
+unittest {
+    // Die Umbenennung hochtief -> ananeo-hochtief ist migrierbar, und zwar aus
+    // genau dem Grund, aus dem die Farbschema-Stufe es nicht war (Kommentar
+    // oben): Der alte Name zeigt auf eine Datei, die es nicht mehr gibt. Eine
+    // "ausdrueckliche Wahl", die zu erhalten waere, kann es dafuer nicht geben.
+    // Anlass ist die Abnahme vom 04.08.2026 - eine gewachsene config.json nannte
+    // nach der Umbenennung weiter "hochtief", und BEIDE eigenen Module fielen
+    // stumm aus.
+    import std.json : parseJSON;
+
+    auto vorgabe = parseJSON(`{"composeModules": ["base", "ananeo-hochtief"]}`);
+    auto config = parseJSON(`{"composeModules": ["base", "hochtief", "ananeo-schrift"]}`);
+
+    migrateConfig(config, vorgabe);
+    assert(config["composeModules"].array[1].str == "ananeo-hochtief");
+
+    // Idempotent, und zwar ohne Textersetzung: "hochtief" ist ein Teilstring des
+    // neuen Namens - wer hier ersetzt statt ganze Eintraege vergleicht, baut beim
+    // zweiten Start "ananeo-ananeo-hochtief".
+    migrateConfig(config, vorgabe);
+    assert(config["composeModules"].array[1].str == "ananeo-hochtief");
+
+    // Der Rest bleibt unangetastet. Die Laenge prueft dieser Test bewusst
+    // nicht: Das Ergaenzen neuer Module ist eine eigene Stufe mit eigenem Test,
+    // und sie laeuft in demselben migrateConfig.
+    import std.algorithm : canFind, map;
+    import std.array : array;
+
+    auto namen = config["composeModules"].array.map!(e => e.str).array;
+    assert(namen[0] == "base");
+    assert(namen.canFind("ananeo-schrift"));
+    assert(!namen.canFind("hochtief"), "der tote Name ist weg, nicht nur ergaenzt");
+
+    // Konfiguration ohne "composeModules" darf nicht werfen.
+    auto ohne = parseJSON(`{"standaloneMode": true}`);
+    migrateConfig(ohne, vorgabe);
+}
+
+unittest {
+    // Neue Compose-Module erreichen eine gewachsene config.json nur ueber eine
+    // Migrationsstufe: Der Start-Merge ersetzt Arrays als Ganzes, ergaenzt sie
+    // also nicht. Ohne diese Stufe fehlten Bestandsnutzern nach der
+    // Inhaltsrunde die 220 Eintraege der Einkreisung - und zwar ohne jede
+    // Warnung, weil kein Name ins Leere zeigt.
+    //
+    // Eingefuegt wird hinter einem Anker, nicht angehaengt: Die Listenreihenfolge
+    // ist die Ladereihenfolge, und wer bei einer Kollision gewinnt, haengt daran.
+    import std.algorithm : map;
+    import std.array : array;
+    import std.json : parseJSON;
+
+    auto vorgabe = parseJSON(`{"composeModules": []}`);
+    auto config = parseJSON(
+        `{"composeModules": ["base", "math", "ananeo-hochtief", "ananeo-schrift"]}`);
+
+    migrateConfig(config, vorgabe);
+
+    auto namen = config["composeModules"].array.map!(e => e.str).array;
+    assert(namen == ["base", "math", "ananeo-hochtief", "ananeo-kreis", "ananeo-schrift"],
+        "hinter dem Anker eingefuegt, nicht angehaengt");
+}
+
+unittest {
+    // Der Marker ist der ganze Grund, warum diese Stufe ergaenzen DARF: Sie
+    // laeuft wie alle bei jedem Start, und ohne ihn koennte sie "noch nie
+    // gesehen" nicht von "bewusst entfernt" unterscheiden - dieselbe Falle, in
+    // die die Farbschema-Stufe gelaufen ist (Kommentar oben). Wer ein Modul
+    // nach dem Umstieg herausnimmt, hat die Version schon gesehen; es kommt
+    // nicht zurueck.
+    import std.algorithm : canFind, map;
+    import std.array : array;
+    import std.json : parseJSON;
+
+    auto vorgabe = parseJSON(`{"composeModules": []}`);
+
+    // Aktuelle Version, Modul fehlt: eine ausdrueckliche Wahl.
+    auto entfernt = parseJSON(`{
+        "configVersion": ` ~ CONFIG_VERSION.to!string ~ `,
+        "composeModules": ["base", "ananeo-hochtief"]
+    }`);
+    migrateConfig(entfernt, vorgabe);
+    assert(!entfernt["composeModules"].array.map!(e => e.str).array.canFind("ananeo-kreis"),
+        "ein bewusst entferntes Modul darf nicht zurueckkehren");
+
+    // Gegenprobe: dieselbe Liste ohne Marker ist eine Config von vor dem
+    // Umstieg - da wird ergaenzt.
+    auto alt = parseJSON(`{"composeModules": ["base", "ananeo-hochtief"]}`);
+    migrateConfig(alt, vorgabe);
+    assert(alt["composeModules"].array.map!(e => e.str).array.canFind("ananeo-kreis"));
+
+    // Und danach traegt sie den Marker, laeuft also beim naechsten Start nicht
+    // noch einmal - sonst waere die Unterscheidung nur einen Start lang wahr.
+    assert(alt["configVersion"].integer == CONFIG_VERSION);
+}
+
+unittest {
+    // Steht der Anker nicht in der Liste - jemand hat ananeo-hochtief
+    // abgewaehlt -, wird angehaengt statt verworfen. Das neue Modul soll auch
+    // dann ankommen; die Reihenfolge entscheidet nur ueber Kollisionen, und
+    // die hat ananeo-kreis mit niemandem.
+    import std.algorithm : map;
+    import std.array : array;
+    import std.json : parseJSON;
+
+    auto vorgabe = parseJSON(`{"composeModules": []}`);
+    auto config = parseJSON(`{"composeModules": ["base", "math"]}`);
+
+    migrateConfig(config, vorgabe);
+
+    assert(config["composeModules"].array.map!(e => e.str).array
+        == ["base", "math", "ananeo-kreis"]);
+}
+
+unittest {
+    // Gegenprobe gegen die ausgelieferten Konfigurationen, im Geist des
+    // Farbschema-Tests: Sie sind auf dem aktuellen Stand, also darf migrateConfig
+    // an ihnen NICHTS aendern - weder Module ergaenzen noch umbenennen. Faengt
+    // ab, dass jemand CONFIG_VERSION hochzaehlt, ohne die Vorgaben nachzuziehen.
+    import std.algorithm : map;
+    import std.array : array;
+    import std.file : readText;
+    import std.json : parseJSON;
+
+    auto vorgabe = parseJSON(readText("config.default.json"));
+
+    foreach (datei; ["config.default.json", "config.neo.json", "config.neoqwertz.json",
+                     "config.noted.json", "config.annoted.json"]) {
+        auto config = parseJSON(readText(datei));
+        auto vorher = config["composeModules"].array.map!(e => e.str).array;
+
+        // Am Dateiinhalt geprueft, NICHT am Ergebnis der Migration: Die setzt
+        // den Marker selbst, die Pruefung danach waere immer wahr.
+        assert("configVersion" in config && config["configVersion"].integer == CONFIG_VERSION,
+            datei ~ ": traegt nicht CONFIG_VERSION " ~ CONFIG_VERSION.to!string
+                  ~ " - Vorgabe nachziehen.");
+
+        migrateConfig(config, vorgabe);
+
+        assert(config["composeModules"].array.map!(e => e.str).array == vorher,
+            datei ~ ": migrateConfig hat die Modulliste veraendert.");
+    }
+}
+
+unittest {
+    // Ein Modulname ohne Datei kostet stillschweigend einen ganzen
+    // Compose-Zweig. Bis zur Inhaltsrunde sah das laufende Programm
+    // composer.composeUnknownModules gar nicht an - nur das Werkzeug meldete
+    // es, und im Release-Build schreibt AnaNeo nicht einmal ein Log. Der Text
+    // muss die Namen tragen, sonst hilft er beim Suchen nicht, und den Ort,
+    // damit klar ist, wo sie stehen.
+    import std.algorithm : canFind;
+
+    initLocalization(Language.GERMAN);
+
+    assert(unbekannteComposeModuleMeldung([]) == "", "alles gefunden - keine Meldung");
+
+    auto meldung = unbekannteComposeModuleMeldung(["hochtief", "tippfehler"]);
+    assert(meldung.canFind("hochtief"));
+    assert(meldung.canFind("tippfehler"));
+    assert(meldung.canFind("composeModules"), "der Text nennt den Ort, an dem sie stehen");
+}
+
 JSONValue parseJSONFile(string jsonFilename) {
     string jsonFilePath = buildPath(executableDir, jsonFilename);
     if (!exists(jsonFilePath))
@@ -678,6 +1241,9 @@ JSONValue parseJSONFile(string jsonFilename) {
     }
 }
 
+version (unittest) {
+    // Im Testbuild liefert source/test_main.d die main-Funktion.
+} else
 void main(string[] args) {
     debug {
         const auto codePage = CP_UTF8;
@@ -687,7 +1253,7 @@ void main(string[] args) {
             debugWriteln("WARNING: Could not set output CP to UTF-8. Some characters may be displayed wrongly.");
     }
 
-    debugWriteln("Starting ReNeo...");
+    debugWriteln("Starting AnaNeo...");
     version(FileLogging) {
         debugWriteln("WARNING: File logging enabled, make sure you know what you're doing!");
     }
@@ -695,7 +1261,7 @@ void main(string[] args) {
 
     initialize();
 
-    // We want to detect when the selected keyboard layout changes so that we can activate or deactivate ReNeo as necessary.
+    // We want to detect when the selected keyboard layout changes so that we can activate or deactivate AnaNeo as necessary.
     // Listening to input locale events directly is difficult and not very robust. So we listen to the foreground window changes
     // (which also fire when the language bar is activated) and then recheck the keyboard layout on the next keypress.
     // For some reason (probably by mistake) WINEVENTPROCs must be @nogc. That's annoying, so we just cast our function pointer
@@ -721,6 +1287,12 @@ void main(string[] args) {
     // Names of icons are defined in icons.rc
     iconEnabled = LoadImage(hInstance, "trayenabled", IMAGE_ICON, 0, 0, LR_SHARED | LR_DEFAULTSIZE);
     iconDisabled = LoadImage(hInstance, "traydisabled", IMAGE_ICON, 0, 0, LR_SHARED | LR_DEFAULTSIZE);
+    iconLocked = LoadImage(hInstance, "traylocked", IMAGE_ICON, 0, 0, LR_SHARED | LR_DEFAULTSIZE);
+    if (!iconLocked) {
+        // Ressource fehlt, etwa weil ananeo.res nicht neu gebaut wurde
+        debugWriteln("Icon 'traylocked' nicht gefunden, benutze das normale Icon.");
+        iconLocked = iconEnabled;
+    }
 
     SetClassLongPtr(hwnd, GCLP_HICON, cast(LONG_PTR) iconEnabled);
 
@@ -736,10 +1308,11 @@ void main(string[] args) {
     }
     AppendMenu(contextMenu, MF_STRING, ID_TRAY_OSK_CONTEXTMENU, appStringwz(AppString.MENU_OSK, hotkeyToggleOSKStr));
     AppendMenu(contextMenu, MF_STRING, ID_TRAY_ONE_HANDED_MODE_CONTEXTMENU, appStringwz(AppString.MENU_ONE_HANDED_MODE, hotkeyToggleOneHandedModeStr));
+    AppendMenu(contextMenu, MF_STRING, ID_TRAY_SHEET_CONTEXTMENU, appStringwz(AppString.MENU_SHEET));
     AppendMenu(contextMenu, MF_STRING, ID_TRAY_RELOAD_CONTEXTMENU, appStringwz(AppString.MENU_RELOAD));
     AppendMenu(contextMenu, MF_STRING, ID_TRAY_ACTIVATE_CONTEXTMENU, appStringwz(AppString.MENU_DISABLE, hotkeyToggleActivationStr));
     AppendMenu(contextMenu, MF_SEPARATOR, 0, NULL);
-    string versionMsg = "ReNeo %VERSION%";   // text is replaced by GitHub release action
+    string versionMsg = "AnaNeo %VERSION%";   // placeholder is replaced with the tag name by .github/workflows/release.yml
     AppendMenu(contextMenu, MF_STRING, ID_TRAY_VERSION, versionMsg.toUTF16z);
     EnableMenuItem(contextMenu, ID_TRAY_VERSION, MF_BYCOMMAND | MF_GRAYED);
     AppendMenu(contextMenu, MF_STRING, ID_TRAY_QUIT_CONTEXTMENU, appStringwz(AppString.MENU_QUIT));

@@ -44,7 +44,6 @@
 <dead_doubleacute> <dead_doubleacute>      : "̋"   U030B # COMBINING DOUBLE ACUTE ACCENT
 <dead_psili> <dead_psili>                  : "̓"   U0313 # COMBINING COMMA ABOVE
 <dead_dasia> <dead_dasia>                  : "̔"   U0314 # COMBINING REVERSED COMMA ABOVE
-<U02F5> <U02F5>                            : "̏"   U030F # COMBINING DOUBLE GRAVE ACCENT
 <U02DE> <U02DE>                            : "˞"   U02DE # MODIFIER LETTER RHOTIC HOOK
 #<dead_belowdot> <dead_belowdot>            : "̣"   U0323 # COMBINING DOT BELOW # already in en_US.utf8
 <Multi_key> <underscore> <underscore>      : "̲"   U0332 # COMBINING LOW LINE

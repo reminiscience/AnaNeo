@@ -39,18 +39,10 @@
 <Multi_key> <o> <KP_3> <integral>          : "∰"   U2230 # VOLUME U222E
 <Multi_key> <jot> <3> <integral>           : "∰"   U2230 # VOLUME U222E
 <Multi_key> <jot> <KP_3> <integral>        : "∰"   U2230 # VOLUME U222E
-<Multi_key> <asciicircum> <bracketleft>    : "⌈"   U2308 # LEFT CEILING
-<Multi_key> <underscore> <bracketleft>     : "⌊"   U230A # LEFT FLOOR
-<Multi_key> <asciicircum> <bracketright>   : "⌉"   U2309 # RIGHT CEILING
-<Multi_key> <underscore> <bracketright>    : "⌋"   U230B # RIGHT FLOOR
-<Multi_key> <greater> <period>             : "∴"   U2234 # THEREFORE
 <Multi_key> <ellipsis> <logicaland>        : "∴"   U2234 # THEREFORE
-<Multi_key> <less> <period>                : "∵"   U2235 # BECAUSE
 <Multi_key> <ellipsis> <logicalor>         : "∵"   U2235 # BECAUSE
 <Multi_key> <2> <colon>                    : "∷"   U2237 # PROPORTION
 <Multi_key> <KP_2> <colon>                 : "∷"   U2237 # PROPORTION
-<Multi_key> <asciitilde> <equal>           : "≅"   U2245 # APPROXIMATELY EQUAL TO
-<Multi_key> <equal> <asciitilde>           : "≅"   U2245 # APPROXIMATELY EQUAL TO
 <dead_tilde> <equal>                       : "≅"   U2245 # APPROXIMATELY EQUAL TO
 <Multi_key> <asciitilde> <asciitilde>      : "≈"   U2248 # ~ ~ ALMOST EQUAL TO
 <dead_tilde> <asciitilde>                  : "≈"   U2248 # ALMOST EQUAL TO
@@ -85,12 +77,7 @@
 <Multi_key> <minus> <plus>                 : "∓"   U2213 # MINUS-OR-PLUS SIGN
 <U21BB> <plusminus>                        : "∓"   U2213 # MINUS-OR-PLUS SIGN
 <U21BB> <U2213>                            : "±"   plusminus # PLUS-MINUS SIGN
-<Multi_key> <s> <u> <m>                    : "∑"   U2211 # N-ARY SUMMATION
-<Multi_key> <i> <n> <t>                    : "∫"   U222B # INTEGRAL
-<Multi_key> <p> <r> <o> <d>                : "∏"   U220F # N-ARY PRODUCT
 <U21BB> <Greek_PI>                         : "∐"   U2210 # N-ARY COPRODUCT
-<Multi_key> <p> <r> <o> <p>                : "∝"   U221D # PROPORTIONAL TO
-<Multi_key> <a> <x>                        : "∝"   U221D # PROPORTIONAL TO
 <Multi_key> <R> <e>                        : "ℜ"   U211C # BLACK-LETTER CAPITAL R
 <Multi_key> <r> <e>                        : "ℜ"   U211C # BLACK-LETTER CAPITAL R
 <Multi_key> <I> <m>                        : "ℑ"   U2111 # BLACK-LETTER CAPITAL I
@@ -120,8 +107,6 @@
 <Multi_key> <U2295> <U2295>                : "⨁"   U2A01 # N-ARY CIRCLED PLUS OPERATOR
 <Multi_key> <U2297> <U2297>                : "⨂"   U2A02 # N-ARY CIRCLED TIMES OPERATOR
 <dead_macron> <includedin>                 : "⊆"   U2286 # SUBSET OF OR EQUAL TO
-<Multi_key> <includedin> <equal>           : "⊆"   U2286 # SUBSET OF OR EQUAL TO
-<Multi_key> <equal> <includedin>           : "⊆"   U2286 # SUBSET OF OR EQUAL TO
 <dead_macron> <includes>                   : "⊇"   U2287 # SUPERSET OF OR EQUAL TO
 <U21BB> <includedin>                       : "⊃"   includes # SUPERSET OF
 <U21BB> <includes>                         : "⊂"   includedin # SUBSET OF
@@ -546,7 +531,6 @@
 <Multi_key> <s> <c> <I>                    : "ℐ"   U2110 # SCRIPT CAPITAL I
 <Multi_key> <s> <c> <L>                    : "ℒ"   U2112 # SCRIPT CAPITAL L
 <Multi_key> <s> <c> <l>                    : "ℓ"   U2113 # SCRIPT SMALL L
-<Multi_key> <e> <l> <l>                    : "ℓ"   U2113 # SCRIPT SMALL L
 <Multi_key> <s> <c> <P>                    : "℘"   U2118 # SCRIPT CAPITAL P
 <Multi_key> <w> <p>                        : "℘"   U2118 # SCRIPT CAPITAL P
 <Multi_key> <s> <c> <R>                    : "ℛ"   U211B # SCRIPT CAPITAL R

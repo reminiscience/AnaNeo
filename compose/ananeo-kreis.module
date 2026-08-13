@@ -1,0 +1,301 @@
+#configinfo Einkreisung ueber den Wurzelmodifikator U+24E7 (eingekreistes x)
+#
+# ERZEUGT von ananeo-tool compose gen-kreis - nicht von Hand aendern.
+# Die Rechnung steht in source/einkreisung.d, ein Waechtertest haelt
+# Datei und Rechnung zusammen.
+#
+# Notation: <U24E7> [Form] [!] Basis. Ohne Formzeichen der Kreis;
+#   ( Klammer, [ Quadrat, . Punkt, ! negativ, [ ! negatives Quadrat.
+#
+# Klebrig: nach einer Ausgabe geht es an diesen Knoten weiter,
+# bis eine Taste ohne Eintrag, das Wurzelzeichen oder Escape kommt.
+#klebrig <U24E7>
+#klebrig <U24E7> <parenleft>
+#klebrig <U24E7> <bracketleft>
+#klebrig <U24E7> <period>
+#klebrig <U24E7> <exclam>
+#klebrig <U24E7> <bracketleft> <exclam>
+
+# Kreis (Basis direkt)
+<U24E7> <U0061> : "ⓐ" U24D0
+<U24E7> <U0062> : "ⓑ" U24D1
+<U24E7> <U0063> : "ⓒ" U24D2
+<U24E7> <U0064> : "ⓓ" U24D3
+<U24E7> <U0065> : "ⓔ" U24D4
+<U24E7> <U0066> : "ⓕ" U24D5
+<U24E7> <U0067> : "ⓖ" U24D6
+<U24E7> <U0068> : "ⓗ" U24D7
+<U24E7> <U0069> : "ⓘ" U24D8
+<U24E7> <U006A> : "ⓙ" U24D9
+<U24E7> <U006B> : "ⓚ" U24DA
+<U24E7> <U006C> : "ⓛ" U24DB
+<U24E7> <U006D> : "ⓜ" U24DC
+<U24E7> <U006E> : "ⓝ" U24DD
+<U24E7> <U006F> : "ⓞ" U24DE
+<U24E7> <U0070> : "ⓟ" U24DF
+<U24E7> <U0071> : "ⓠ" U24E0
+<U24E7> <U0072> : "ⓡ" U24E1
+<U24E7> <U0073> : "ⓢ" U24E2
+<U24E7> <U0074> : "ⓣ" U24E3
+<U24E7> <U0075> : "ⓤ" U24E4
+<U24E7> <U0076> : "ⓥ" U24E5
+<U24E7> <U0077> : "ⓦ" U24E6
+<U24E7> <U0078> : "ⓧ" U24E7
+<U24E7> <U0079> : "ⓨ" U24E8
+<U24E7> <U007A> : "ⓩ" U24E9
+<U24E7> <U0041> : "Ⓐ" U24B6
+<U24E7> <U0042> : "Ⓑ" U24B7
+<U24E7> <U0043> : "Ⓒ" U24B8
+<U24E7> <U0044> : "Ⓓ" U24B9
+<U24E7> <U0045> : "Ⓔ" U24BA
+<U24E7> <U0046> : "Ⓕ" U24BB
+<U24E7> <U0047> : "Ⓖ" U24BC
+<U24E7> <U0048> : "Ⓗ" U24BD
+<U24E7> <U0049> : "Ⓘ" U24BE
+<U24E7> <U004A> : "Ⓙ" U24BF
+<U24E7> <U004B> : "Ⓚ" U24C0
+<U24E7> <U004C> : "Ⓛ" U24C1
+<U24E7> <U004D> : "Ⓜ" U24C2
+<U24E7> <U004E> : "Ⓝ" U24C3
+<U24E7> <U004F> : "Ⓞ" U24C4
+<U24E7> <U0050> : "Ⓟ" U24C5
+<U24E7> <U0051> : "Ⓠ" U24C6
+<U24E7> <U0052> : "Ⓡ" U24C7
+<U24E7> <U0053> : "Ⓢ" U24C8
+<U24E7> <U0054> : "Ⓣ" U24C9
+<U24E7> <U0055> : "Ⓤ" U24CA
+<U24E7> <U0056> : "Ⓥ" U24CB
+<U24E7> <U0057> : "Ⓦ" U24CC
+<U24E7> <U0058> : "Ⓧ" U24CD
+<U24E7> <U0059> : "Ⓨ" U24CE
+<U24E7> <U005A> : "Ⓩ" U24CF
+<U24E7> <U0031> : "①" U2460
+<U24E7> <U0032> : "②" U2461
+<U24E7> <U0033> : "③" U2462
+<U24E7> <U0034> : "④" U2463
+<U24E7> <U0035> : "⑤" U2464
+<U24E7> <U0036> : "⑥" U2465
+<U24E7> <U0037> : "⑦" U2466
+<U24E7> <U0038> : "⑧" U2467
+<U24E7> <U0039> : "⑨" U2468
+<U24E7> <U0030> : "⓪" U24EA
+
+# Kreis, zweistellig
+<U24E7> <U0031> <U0030> : "⑩" U2469
+<U24E7> <U0031> <U0031> : "⑪" U246A
+<U24E7> <U0031> <U0032> : "⑫" U246B
+<U24E7> <U0031> <U0033> : "⑬" U246C
+<U24E7> <U0031> <U0034> : "⑭" U246D
+<U24E7> <U0031> <U0035> : "⑮" U246E
+<U24E7> <U0031> <U0036> : "⑯" U246F
+<U24E7> <U0031> <U0037> : "⑰" U2470
+<U24E7> <U0031> <U0038> : "⑱" U2471
+<U24E7> <U0031> <U0039> : "⑲" U2472
+<U24E7> <U0032> <U0030> : "⑳" U2473
+
+# Klammer
+<U24E7> <parenleft> <U0061> : "⒜" U249C
+<U24E7> <parenleft> <U0062> : "⒝" U249D
+<U24E7> <parenleft> <U0063> : "⒞" U249E
+<U24E7> <parenleft> <U0064> : "⒟" U249F
+<U24E7> <parenleft> <U0065> : "⒠" U24A0
+<U24E7> <parenleft> <U0066> : "⒡" U24A1
+<U24E7> <parenleft> <U0067> : "⒢" U24A2
+<U24E7> <parenleft> <U0068> : "⒣" U24A3
+<U24E7> <parenleft> <U0069> : "⒤" U24A4
+<U24E7> <parenleft> <U006A> : "⒥" U24A5
+<U24E7> <parenleft> <U006B> : "⒦" U24A6
+<U24E7> <parenleft> <U006C> : "⒧" U24A7
+<U24E7> <parenleft> <U006D> : "⒨" U24A8
+<U24E7> <parenleft> <U006E> : "⒩" U24A9
+<U24E7> <parenleft> <U006F> : "⒪" U24AA
+<U24E7> <parenleft> <U0070> : "⒫" U24AB
+<U24E7> <parenleft> <U0071> : "⒬" U24AC
+<U24E7> <parenleft> <U0072> : "⒭" U24AD
+<U24E7> <parenleft> <U0073> : "⒮" U24AE
+<U24E7> <parenleft> <U0074> : "⒯" U24AF
+<U24E7> <parenleft> <U0075> : "⒰" U24B0
+<U24E7> <parenleft> <U0076> : "⒱" U24B1
+<U24E7> <parenleft> <U0077> : "⒲" U24B2
+<U24E7> <parenleft> <U0078> : "⒳" U24B3
+<U24E7> <parenleft> <U0079> : "⒴" U24B4
+<U24E7> <parenleft> <U007A> : "⒵" U24B5
+<U24E7> <parenleft> <U0041> : "🄐" U1F110
+<U24E7> <parenleft> <U0042> : "🄑" U1F111
+<U24E7> <parenleft> <U0043> : "🄒" U1F112
+<U24E7> <parenleft> <U0044> : "🄓" U1F113
+<U24E7> <parenleft> <U0045> : "🄔" U1F114
+<U24E7> <parenleft> <U0046> : "🄕" U1F115
+<U24E7> <parenleft> <U0047> : "🄖" U1F116
+<U24E7> <parenleft> <U0048> : "🄗" U1F117
+<U24E7> <parenleft> <U0049> : "🄘" U1F118
+<U24E7> <parenleft> <U004A> : "🄙" U1F119
+<U24E7> <parenleft> <U004B> : "🄚" U1F11A
+<U24E7> <parenleft> <U004C> : "🄛" U1F11B
+<U24E7> <parenleft> <U004D> : "🄜" U1F11C
+<U24E7> <parenleft> <U004E> : "🄝" U1F11D
+<U24E7> <parenleft> <U004F> : "🄞" U1F11E
+<U24E7> <parenleft> <U0050> : "🄟" U1F11F
+<U24E7> <parenleft> <U0051> : "🄠" U1F120
+<U24E7> <parenleft> <U0052> : "🄡" U1F121
+<U24E7> <parenleft> <U0053> : "🄢" U1F122
+<U24E7> <parenleft> <U0054> : "🄣" U1F123
+<U24E7> <parenleft> <U0055> : "🄤" U1F124
+<U24E7> <parenleft> <U0056> : "🄥" U1F125
+<U24E7> <parenleft> <U0057> : "🄦" U1F126
+<U24E7> <parenleft> <U0058> : "🄧" U1F127
+<U24E7> <parenleft> <U0059> : "🄨" U1F128
+<U24E7> <parenleft> <U005A> : "🄩" U1F129
+<U24E7> <parenleft> <U0031> : "⑴" U2474
+<U24E7> <parenleft> <U0032> : "⑵" U2475
+<U24E7> <parenleft> <U0033> : "⑶" U2476
+<U24E7> <parenleft> <U0034> : "⑷" U2477
+<U24E7> <parenleft> <U0035> : "⑸" U2478
+<U24E7> <parenleft> <U0036> : "⑹" U2479
+<U24E7> <parenleft> <U0037> : "⑺" U247A
+<U24E7> <parenleft> <U0038> : "⑻" U247B
+<U24E7> <parenleft> <U0039> : "⑼" U247C
+
+# Klammer, zweistellig
+<U24E7> <parenleft> <U0031> <U0030> : "⑽" U247D
+<U24E7> <parenleft> <U0031> <U0031> : "⑾" U247E
+<U24E7> <parenleft> <U0031> <U0032> : "⑿" U247F
+<U24E7> <parenleft> <U0031> <U0033> : "⒀" U2480
+<U24E7> <parenleft> <U0031> <U0034> : "⒁" U2481
+<U24E7> <parenleft> <U0031> <U0035> : "⒂" U2482
+<U24E7> <parenleft> <U0031> <U0036> : "⒃" U2483
+<U24E7> <parenleft> <U0031> <U0037> : "⒄" U2484
+<U24E7> <parenleft> <U0031> <U0038> : "⒅" U2485
+<U24E7> <parenleft> <U0031> <U0039> : "⒆" U2486
+<U24E7> <parenleft> <U0032> <U0030> : "⒇" U2487
+
+# Quadrat
+<U24E7> <bracketleft> <U0041> : "🄰" U1F130
+<U24E7> <bracketleft> <U0042> : "🄱" U1F131
+<U24E7> <bracketleft> <U0043> : "🄲" U1F132
+<U24E7> <bracketleft> <U0044> : "🄳" U1F133
+<U24E7> <bracketleft> <U0045> : "🄴" U1F134
+<U24E7> <bracketleft> <U0046> : "🄵" U1F135
+<U24E7> <bracketleft> <U0047> : "🄶" U1F136
+<U24E7> <bracketleft> <U0048> : "🄷" U1F137
+<U24E7> <bracketleft> <U0049> : "🄸" U1F138
+<U24E7> <bracketleft> <U004A> : "🄹" U1F139
+<U24E7> <bracketleft> <U004B> : "🄺" U1F13A
+<U24E7> <bracketleft> <U004C> : "🄻" U1F13B
+<U24E7> <bracketleft> <U004D> : "🄼" U1F13C
+<U24E7> <bracketleft> <U004E> : "🄽" U1F13D
+<U24E7> <bracketleft> <U004F> : "🄾" U1F13E
+<U24E7> <bracketleft> <U0050> : "🄿" U1F13F
+<U24E7> <bracketleft> <U0051> : "🅀" U1F140
+<U24E7> <bracketleft> <U0052> : "🅁" U1F141
+<U24E7> <bracketleft> <U0053> : "🅂" U1F142
+<U24E7> <bracketleft> <U0054> : "🅃" U1F143
+<U24E7> <bracketleft> <U0055> : "🅄" U1F144
+<U24E7> <bracketleft> <U0056> : "🅅" U1F145
+<U24E7> <bracketleft> <U0057> : "🅆" U1F146
+<U24E7> <bracketleft> <U0058> : "🅇" U1F147
+<U24E7> <bracketleft> <U0059> : "🅈" U1F148
+<U24E7> <bracketleft> <U005A> : "🅉" U1F149
+
+# Punkt
+<U24E7> <period> <U0031> : "⒈" U2488
+<U24E7> <period> <U0032> : "⒉" U2489
+<U24E7> <period> <U0033> : "⒊" U248A
+<U24E7> <period> <U0034> : "⒋" U248B
+<U24E7> <period> <U0035> : "⒌" U248C
+<U24E7> <period> <U0036> : "⒍" U248D
+<U24E7> <period> <U0037> : "⒎" U248E
+<U24E7> <period> <U0038> : "⒏" U248F
+<U24E7> <period> <U0039> : "⒐" U2490
+
+# Punkt, zweistellig
+<U24E7> <period> <U0031> <U0030> : "⒑" U2491
+<U24E7> <period> <U0031> <U0031> : "⒒" U2492
+<U24E7> <period> <U0031> <U0032> : "⒓" U2493
+<U24E7> <period> <U0031> <U0033> : "⒔" U2494
+<U24E7> <period> <U0031> <U0034> : "⒕" U2495
+<U24E7> <period> <U0031> <U0035> : "⒖" U2496
+<U24E7> <period> <U0031> <U0036> : "⒗" U2497
+<U24E7> <period> <U0031> <U0037> : "⒘" U2498
+<U24E7> <period> <U0031> <U0038> : "⒙" U2499
+<U24E7> <period> <U0031> <U0039> : "⒚" U249A
+<U24E7> <period> <U0032> <U0030> : "⒛" U249B
+
+# negativer Kreis
+<U24E7> <exclam> <U0041> : "🅐" U1F150
+<U24E7> <exclam> <U0042> : "🅑" U1F151
+<U24E7> <exclam> <U0043> : "🅒" U1F152
+<U24E7> <exclam> <U0044> : "🅓" U1F153
+<U24E7> <exclam> <U0045> : "🅔" U1F154
+<U24E7> <exclam> <U0046> : "🅕" U1F155
+<U24E7> <exclam> <U0047> : "🅖" U1F156
+<U24E7> <exclam> <U0048> : "🅗" U1F157
+<U24E7> <exclam> <U0049> : "🅘" U1F158
+<U24E7> <exclam> <U004A> : "🅙" U1F159
+<U24E7> <exclam> <U004B> : "🅚" U1F15A
+<U24E7> <exclam> <U004C> : "🅛" U1F15B
+<U24E7> <exclam> <U004D> : "🅜" U1F15C
+<U24E7> <exclam> <U004E> : "🅝" U1F15D
+<U24E7> <exclam> <U004F> : "🅞" U1F15E
+<U24E7> <exclam> <U0050> : "🅟" U1F15F
+<U24E7> <exclam> <U0051> : "🅠" U1F160
+<U24E7> <exclam> <U0052> : "🅡" U1F161
+<U24E7> <exclam> <U0053> : "🅢" U1F162
+<U24E7> <exclam> <U0054> : "🅣" U1F163
+<U24E7> <exclam> <U0055> : "🅤" U1F164
+<U24E7> <exclam> <U0056> : "🅥" U1F165
+<U24E7> <exclam> <U0057> : "🅦" U1F166
+<U24E7> <exclam> <U0058> : "🅧" U1F167
+<U24E7> <exclam> <U0059> : "🅨" U1F168
+<U24E7> <exclam> <U005A> : "🅩" U1F169
+<U24E7> <exclam> <U0031> : "❶" U2776
+<U24E7> <exclam> <U0032> : "❷" U2777
+<U24E7> <exclam> <U0033> : "❸" U2778
+<U24E7> <exclam> <U0034> : "❹" U2779
+<U24E7> <exclam> <U0035> : "❺" U277A
+<U24E7> <exclam> <U0036> : "❻" U277B
+<U24E7> <exclam> <U0037> : "❼" U277C
+<U24E7> <exclam> <U0038> : "❽" U277D
+<U24E7> <exclam> <U0039> : "❾" U277E
+<U24E7> <exclam> <U0030> : "⓿" U24FF
+
+# negativer Kreis, zweistellig
+<U24E7> <exclam> <U0031> <U0030> : "❿" U277F
+<U24E7> <exclam> <U0031> <U0031> : "⓫" U24EB
+<U24E7> <exclam> <U0031> <U0032> : "⓬" U24EC
+<U24E7> <exclam> <U0031> <U0033> : "⓭" U24ED
+<U24E7> <exclam> <U0031> <U0034> : "⓮" U24EE
+<U24E7> <exclam> <U0031> <U0035> : "⓯" U24EF
+<U24E7> <exclam> <U0031> <U0036> : "⓰" U24F0
+<U24E7> <exclam> <U0031> <U0037> : "⓱" U24F1
+<U24E7> <exclam> <U0031> <U0038> : "⓲" U24F2
+<U24E7> <exclam> <U0031> <U0039> : "⓳" U24F3
+<U24E7> <exclam> <U0032> <U0030> : "⓴" U24F4
+
+# negatives Quadrat
+<U24E7> <bracketleft> <exclam> <U0041> : "🅰" U1F170
+<U24E7> <bracketleft> <exclam> <U0042> : "🅱" U1F171
+<U24E7> <bracketleft> <exclam> <U0043> : "🅲" U1F172
+<U24E7> <bracketleft> <exclam> <U0044> : "🅳" U1F173
+<U24E7> <bracketleft> <exclam> <U0045> : "🅴" U1F174
+<U24E7> <bracketleft> <exclam> <U0046> : "🅵" U1F175
+<U24E7> <bracketleft> <exclam> <U0047> : "🅶" U1F176
+<U24E7> <bracketleft> <exclam> <U0048> : "🅷" U1F177
+<U24E7> <bracketleft> <exclam> <U0049> : "🅸" U1F178
+<U24E7> <bracketleft> <exclam> <U004A> : "🅹" U1F179
+<U24E7> <bracketleft> <exclam> <U004B> : "🅺" U1F17A
+<U24E7> <bracketleft> <exclam> <U004C> : "🅻" U1F17B
+<U24E7> <bracketleft> <exclam> <U004D> : "🅼" U1F17C
+<U24E7> <bracketleft> <exclam> <U004E> : "🅽" U1F17D
+<U24E7> <bracketleft> <exclam> <U004F> : "🅾" U1F17E
+<U24E7> <bracketleft> <exclam> <U0050> : "🅿" U1F17F
+<U24E7> <bracketleft> <exclam> <U0051> : "🆀" U1F180
+<U24E7> <bracketleft> <exclam> <U0052> : "🆁" U1F181
+<U24E7> <bracketleft> <exclam> <U0053> : "🆂" U1F182
+<U24E7> <bracketleft> <exclam> <U0054> : "🆃" U1F183
+<U24E7> <bracketleft> <exclam> <U0055> : "🆄" U1F184
+<U24E7> <bracketleft> <exclam> <U0056> : "🆅" U1F185
+<U24E7> <bracketleft> <exclam> <U0057> : "🆆" U1F186
+<U24E7> <bracketleft> <exclam> <U0058> : "🆇" U1F187
+<U24E7> <bracketleft> <exclam> <U0059> : "🆈" U1F188
+<U24E7> <bracketleft> <exclam> <U005A> : "🆉" U1F189

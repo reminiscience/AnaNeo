@@ -14,7 +14,5 @@
 <Multi_key> <t> <comma>          	: "ţ"   U0163 # LATIN SMALL LETTER T WITH CEDILLA
 # Konflikt bei Sequenz <Multi_key> <exclam> <question>. Unsere Sequenz »<Multi_key> <exclam> <question>                  : "⁉"   U2049 # EXCLAMATION QUESTION MARK« überschreibt die folgende Sequenz aus enUS.module
 <Multi_key> <exclam> <question>         : "‽"   U203D # INTERROBANG
-# Konflikt bei Sequenz <Multi_key> <bracketleft> <bracketright>. Unsere Sequenz »<Multi_key> <bracketleft> <bracketright>   : "□"   U25A1 # WHITE SQUARE« überschreibt die folgende Sequenz aus enUS.module
-<Multi_key> <bracketleft> <bracketright>        : "⌷"   U2337   # [ ] APL FUNCTIONAL SYMBOL SQUISH QUAD
 # Konflikt bei Sequenz <Multi_key <question> <exclam>. Unsere Sequenz »<Multi_key> <question> <exclam>                  : "⁈"   U2048 # QUESTION EXCLAMATION MARK« überschreibt die folgende Sequenz aus enUS.module
 <Multi_key> <question> <exclam>         : "⸘"   U2E18 # INVERTED INTERROBANG

@@ -1,13 +1,38 @@
 {
-    "standaloneLayout": "Bone",
+    "standaloneLayout": "AnNoted",
     "standaloneMode": true,
     "language": "german",
     "filterNeoModifiers": true,
     "autoNumlock": true,
-    "enableMod4Lock": true,
+    "configVersion": 1,
+    "composeModules": [
+        "base", "cyrillic", "diacritics", "en_US",
+        "greek", "lang", "math", "ananeo-hochtief", "ananeo-kreis", "ananeo-schrift"
+    ],
+    "compose": {
+        "oskAutoShow": false
+    },
+    "locks": {
+        "oskAutoShow": false,
+        "triggers": [
+            { "chord": "Shift+Shift", "action": "capslock" },
+            { "chord": "Mod4+Mod4", "lock": ["Mod4"], "name": "Mod4" },
+            { "chord": "Mod3+Mod3", "lock": ["Mod3"], "name": "Mod3" },
+            { "chord": "Mod3+F2", "lock": ["Mod5"], "name": "Mathematik" },
+            { "chord": "Mod3+F3", "lock": ["Mod6"], "name": "Typografie" },
+            { "chord": "Mod3+F4", "lock": ["Mod7"], "name": "Griechisch" },
+            { "chord": "Mod3+F5", "lock": ["Mod8"], "name": "Kyrillisch" },
+            { "chord": "Mod3+F6", "lock": ["Mod9"], "name": "Extra" },
+            { "chord": "Mod3+F7", "lock": ["Shift"], "mode": "toggle", "name": "Shift" },
+            { "chord": "Mod3+Tab", "action": "compose" },
+            { "chord": "Mod3+Escape", "action": "clearLocks" },
+            { "chord": "Mod3+F1", "action": "osk" },
+            { "chord": "Mod3+F10", "action": "oneHandedMode" }
+        ]
+    },
     "osk": {
         "numpad": true,
-        "theme": "ColorClassic",
+        "theme": "Sachlich",
         "layout": "iso",
         "numberRow": true,
         "modifierNames": "standard"

@@ -6,56 +6,87 @@ on:
 jobs:
   build-release:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
       - name: Set up D compiler
-        uses: dlang-community/setup-dlang@v1
+        uses: dlang-community/setup-dlang@v2
+      - name: Run unit tests
+        run: dub test
+      - name: Run linter
+        run: dub lint
       - name: Install Pandoc
         run: choco install pandoc
       - name: Check Pandoc version
         run: pandoc --version
-      - name: Compile Readme (German) to HTML
-        run: pandoc README.md -f markdown -t html -s --metadata pagetitle="ReNeo README" --css docs/gh-pandoc.css -o README.html
       - name: Compile Readme (English) to HTML
-        run: pandoc README_EN.md -f markdown -t html -s --metadata pagetitle="ReNeo README" --css docs/gh-pandoc.css -o README_EN.html
+        run: pandoc README.md -f markdown -t html -s --metadata pagetitle="AnaNeo README" --css docs/gh-pandoc.css -o README.html
+      - name: Compile Readme (German) to HTML
+        run: pandoc README_DE.md -f markdown -t html -s --metadata pagetitle="AnaNeo README (deutsch)" --css docs/gh-pandoc.css -o README_DE.html
       - name: Replace version string in source code
-        run: ((Get-Content -path source\app.d -Raw ) -replace '%VERSION%',$Env:GITHUB_REF.Substring(10)) | Set-Content -path source\app.d
+        env:
+          VERSION: ${{ github.ref_name }}
+        # .Replace() statt -replace: Letzteres ist eine Regex-Ersetzung, in der $-Sequenzen
+        # im Ersatzstring (hier der Tag-Name) Sonderbedeutung haetten.
+        run: |
+          $pfad = 'source\app.d'
+          $inhalt = Get-Content -Path $pfad -Raw
+          if (-not $inhalt.Contains('%VERSION%')) { throw "Platzhalter %VERSION% steht nicht mehr in $pfad." }
+          $inhalt.Replace('%VERSION%', $Env:VERSION) | Set-Content -Path $pfad
       - name: Compile debug version with Dub
         run: dub build --build=debug-log
       - name: Rename debug version
-        run: ren reneo.exe reneo_debug.exe
+        run: ren ananeo.exe ananeo_debug.exe
       - name: Compile release version with Dub
         run: dub build --build=release
       - name: Create directory for ZIP file
-        run: mkdir ReNeo
+        run: mkdir AnaNeo
       - name: Move release files into directory (except default config)
-        run: Move-Item -Path compose,cairo.dll,COPYING,keysymdef.h,layouts.json,README.md,README.html,README_EN.md,README_EN.html,docs,reneo.exe,reneo_debug.exe -Destination ReNeo
+        run: Move-Item -Path compose,fonts,cairo.dll,COPYING,keysymdef.h,layouts.json,README.md,README.html,README_DE.md,README_DE.html,docs,ananeo.exe,ananeo_debug.exe -Destination AnaNeo
+      - name: Remove planning documents from package
+        # Guard, damit ein spaeteres Entfernen des Verzeichnisses aus dem Repo den Release
+        # nicht bricht: GitHub fuehrt pwsh mit $ErrorActionPreference = 'stop' aus.
+        run: |
+          $pfad = 'AnaNeo\docs\superpowers'
+          if (Test-Path -LiteralPath $pfad) { Remove-Item -LiteralPath $pfad -Recurse -Force }
       - name: Replace config.default.json with Neo config
-        run: mv -Force config.neo.json ReNeo\config.default.json
+        run: mv -Force config.neo.json AnaNeo\config.default.json
       - name: Create Neo ZIP file
-        run: 7z a -tzip ReNeo_Neo.zip ReNeo\
+        run: 7z a -tzip AnaNeo_Neo.zip AnaNeo\
       - name: Replace config.default.json with NeoQwertz config
-        run: mv -Force config.neoqwertz.json ReNeo\config.default.json
+        run: mv -Force config.neoqwertz.json AnaNeo\config.default.json
       - name: Create NeoQwertz ZIP file
-        run: 7z a -tzip ReNeo_NeoQwertz.zip ReNeo\
-      - name: Replace config.default.json with Bone config
-        run: mv -Force config.bone.json ReNeo\config.default.json
-      - name: Create Bone ZIP file
-        run: 7z a -tzip ReNeo_Bone.zip ReNeo\
-      - name: Replace config.default.json with 3l config
-        run: mv -Force config.3l.json ReNeo\config.default.json
-      - name: Create 3l ZIP file
-        run: 7z a -tzip ReNeo_3l.zip ReNeo\
-      - name: Create Release
-        uses: marvinpinto/action-automatic-releases@v1.2.1
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          draft: true
-          prerelease: false
-          files: |
-            ReNeo_Neo.zip
-            ReNeo_NeoQwertz.zip
-            ReNeo_Bone.zip
-            ReNeo_3l.zip
-      
+        run: 7z a -tzip AnaNeo_NeoQwertz.zip AnaNeo\
+      - name: Replace config.default.json with Noted config
+        run: mv -Force config.noted.json AnaNeo\config.default.json
+      - name: Create Noted ZIP file
+        run: 7z a -tzip AnaNeo_Noted.zip AnaNeo\
+      - name: Replace config.default.json with AnNoted config
+        run: mv -Force config.annoted.json AnaNeo\config.default.json
+      - name: Create AnNoted ZIP file
+        run: 7z a -tzip AnaNeo_AnNoted.zip AnaNeo\
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        # Idempotent, damit "Re-run all jobs" nach einem spaeten Fehlschlag nicht am schon
+        # angelegten Entwurf scheitert. Ersetzt wird ausschliesslich ein Entwurf; ein bereits
+        # veroeffentlichter Release zum selben Tag bricht den Lauf ab, statt geloescht zu werden.
+        # $PSNativeCommandUseErrorActionPreference = $false sichert die Existenzpruefung ab:
+        # Steht die Variable auf $true (Vorgabe ist heute $false, geprueft mit pwsh 7.6.4),
+        # beendet zusammen mit GitHubs 'stop' schon das nicht gefundene Release in
+        # "gh release view" den Schritt - also genau der Normalfall.
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $vorhanden = gh release view $Env:VERSION --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+              if (-not ($vorhanden | ConvertFrom-Json).isDraft) {
+                  throw "Release $Env:VERSION ist bereits veroeffentlicht - Abbruch statt Ueberschreiben."
+              }
+              Write-Host "Entwurf $Env:VERSION existiert bereits und wird ersetzt."
+              gh release delete $Env:VERSION --yes
+              if ($LASTEXITCODE -ne 0) { throw "Loeschen des vorhandenen Entwurfs $Env:VERSION fehlgeschlagen." }
+          }
+          gh release create $Env:VERSION --draft --title "AnaNeo $Env:VERSION" --notes "Release-Notizen folgen." AnaNeo_Neo.zip AnaNeo_NeoQwertz.zip AnaNeo_Noted.zip AnaNeo_AnNoted.zip

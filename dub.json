@@ -5,11 +5,11 @@
 	],
 	"description": "Neo-Tastaturlayouts für Windows",
 	"libs": [
-		"user32", "gdi32"
+		"user32", "gdi32", "shell32"
 	],
-    "sourceFiles": ["res\\reneo.res"],
+    "sourceFiles": ["res\\ananeo.res"],
 	"license": "GPL-3.0",
-    "name": "reneo",
+    "name": "ananeo",
     "versions": ["Windows10"],
     "buildTypes": {
         "debug": {
@@ -26,5 +26,36 @@
         }
     },
     "libs-windows-x86_64": ["lib/x86_64/cairo"],
-    "copyFiles-windows-x86_64": ["lib/x86_64/*.dll"]
+    "copyFiles-windows-x86_64": ["lib/x86_64/*.dll"],
+    "configurations": [
+        {
+            "name": "application",
+            "targetType": "executable",
+            "excludedSourceFiles": ["source/test_main.d", "source/tool_main.d"]
+        },
+        {
+            "name": "unittest",
+            "targetType": "executable",
+            "targetName": "ananeo-test",
+            "mainSourceFile": "source/test_main.d",
+            "excludedSourceFiles": ["source/tool_main.d"]
+        },
+        {
+            "name": "tool",
+            "targetType": "executable",
+            "targetName": "ananeo-tool",
+            "mainSourceFile": "source/tool_main.d",
+            "excludedSourceFiles": [
+                "source/test_main.d",
+                "source/app.d",
+                "source/ananeo.d",
+                "source/osk.d",
+                "source/fontchain.d",
+                "source/trayicon.d",
+                "source/localization.d",
+                "source/cairo/cairo.d",
+                "source/cairo/cairo_win32.d"
+            ]
+        }
+    ]
 }

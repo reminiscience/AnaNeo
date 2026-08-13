@@ -2,7 +2,6 @@
 # standard Definitions by Neo keyboard layout
 
 <U21BB> <dead_cedilla> <nobreakspace>      : "˛"   U02DB # OGONEK
-<U02F5> <nobreakspace>                     : "˵"   U02F5 # MODIFIER LETTER MIDDLE DOUBLE GRAVE ACCENT
 <U21BB> <dead_doubleacute> <nobreakspace>  : "˵"   U02F5 # MODIFIER LETTER MIDDLE DOUBLE GRAVE ACCENT
 <U21BB> <nobreakspace>                     : "↻"   U21BB # CLOCKWISE OPEN CIRCLE ARROW
 <U02DE> <nobreakspace>                     : "˞"   U02DE # MODIFIER LETTER RHOTIC HOOK
@@ -77,18 +76,6 @@
 # <dead_stroke> <D>                      : "Ð"   U00D0 # LATIN CAPITAL LETTER ETH
 
 # letters with double grave
-<U02F5> <A>                              : "Ȁ"   U0200 # LATIN CAPITAL LETTER A WITH DOUBLE GRAVE
-<U02F5> <a>                              : "ȁ"   U0201 # LATIN SMALL LETTER A WITH DOUBLE GRAVE
-<U02F5> <E>                              : "Ȅ"   U0204 # LATIN CAPITAL LETTER E WITH DOUBLE GRAVE
-<U02F5> <e>                              : "ȅ"   U0205 # LATIN SMALL LETTER E WITH DOUBLE GRAVE
-<U02F5> <I>                              : "Ȉ"   U0208 # LATIN CAPITAL LETTER I WITH DOUBLE GRAVE
-<U02F5> <i>                              : "ȉ"   U0209 # LATIN SMALL LETTER I WITH DOUBLE GRAVE
-<U02F5> <O>                              : "Ȍ"   U020C # LATIN CAPITAL LETTER O WITH DOUBLE GRAVE
-<U02F5> <o>                              : "ȍ"   U020D # LATIN SMALL LETTER O WITH DOUBLE GRAVE
-<U02F5> <R>                              : "Ȑ"   U0210 # LATIN CAPITAL LETTER R WITH DOUBLE GRAVE
-<U02F5> <r>                              : "ȑ"   U0211 # LATIN SMALL LETTER R WITH DOUBLE GRAVE
-<U02F5> <U>                              : "Ȕ"   U0214 # LATIN CAPITAL LETTER U WITH DOUBLE GRAVE
-<U02F5> <u>                              : "ȕ"   U0215 # LATIN SMALL LETTER U WITH DOUBLE GRAVE
 # double grave as turned double acute (will replace double grave)
 <U21BB> <dead_doubleacute> <A>           : "Ȁ"   U0200 # LATIN CAPITAL LETTER A WITH DOUBLE GRAVE
 <U21BB> <dead_doubleacute> <a>           : "ȁ"   U0201 # LATIN SMALL LETTER A WITH DOUBLE GRAVE
@@ -330,8 +317,6 @@
 <dead_stroke> <U26A5>                      : "⚧"   U26A7 # MALE WITH STROKE AND MALE AND FEMALE SIGN
 <dead_breve> <femalesymbol>                : "☿"   U263F # MERCURY
 <U21BB> <femalesymbol>                     : "♁"   U2641 # EARTH
-<Multi_key> <Tab>                          : "♫"   U266B # BEAMED EIGHTH NOTE
-<Multi_key> <Multi_key>                    : "♫"   U266B # BEAMED EIGHTH NOTE
 <U02DE> <slash>                            : "✔"   U2714 # HEAVY CHECK MARK
 <U02DE> <KP_Divide>                        : "✔"   U2714 # HEAVY CHECK MARK
 <U02DE> <backslash>                        : "✔"   U2714 # HEAVY CHECK MARK
