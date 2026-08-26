@@ -19,3 +19,4 @@ MASTERPLAN.md
 docs/superpowers/
 # Debug-Log des debug-log-Builds - enthaelt Tastatureingaben
 ananeo_log.txt
+__pycache__/
