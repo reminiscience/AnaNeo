@@ -1971,6 +1971,46 @@ unittest {
     assert(kreisParallel.type == ComposeResultType.FINISH
         && kreisParallel.result == "⦷"w,
         "Multi_key o ∥ ergibt CIRCLED PARALLEL");
+
+    // ---- Leitfall 9: die Chancery-Reihe der Schrifttabelle (11.09.2026) ----
+    // x-Fraktur c A tippt den Script-Buchstaben MIT Variantenselektor, die
+    // Reihe bleibt klebrig; x-Fraktur C A tippt das LaTeX-Makro als Text,
+    // weil KaTeX Variantenfolgen ignoriert. Kleinbuchstaben fuehrt keine der
+    // beiden Reihen - a bricht ab und tippt die rohe Sequenz.
+    auto fraktur = zelle(tasteMitKeysym(parseKeysym("U1D535"), 21), 21);
+    auto kleinC = zelle(tasteMitKeysym(parseKeysym("c"), 1), 1);
+    auto grossC = zelle(tasteMitKeysym(parseKeysym("C"), 2), 2);
+    auto grossA = zelle(tasteMitKeysym(parseKeysym("A"), 2), 2);
+    auto grossB = zelle(tasteMitKeysym(parseKeysym("B"), 2), 2);
+    auto kleinA = zelle(tasteMitKeysym(parseKeysym("a"), 1), 1);
+
+    assert(compose(fraktur).type == ComposeResultType.EAT);
+    assert(compose(kleinC).type == ComposeResultType.EAT);
+    auto chanceryA = compose(grossA);
+    assert(chanceryA.type == ComposeResultType.EMIT && chanceryA.result == "\U0001D49C\uFE00"w,
+        "x-Fraktur c A ergibt U+1D49C plus U+FE00 und haelt die Reihe offen");
+    auto chanceryB = compose(grossB);
+    assert(chanceryB.type == ComposeResultType.EMIT && chanceryB.result == "ℬ\uFE00"w,
+        "die Letterlike-Ausnahme ℬ traegt den Selektor ebenso");
+    auto abbruch = compose(kleinA);
+    assert(abbruch.type == ComposeResultType.ABORT && abbruch.result == "a"w,
+        "nach einer Ausgabe faengt die Abbruchkette neu an: nur das a");
+
+    assert(compose(fraktur).type == ComposeResultType.EAT);
+    assert(compose(grossC).type == ComposeResultType.EAT);
+    auto makroA = compose(grossA);
+    assert(makroA.type == ComposeResultType.EMIT && makroA.result == "\\mathcal{A}"w,
+        "x-Fraktur C A tippt das Makro als Text");
+    auto makroB = compose(grossB);
+    assert(makroB.type == ComposeResultType.EMIT && makroB.result == "\\mathcal{B}"w,
+        "die Makro-Reihe ist klebrig");
+    assert(compose(fraktur).type == ComposeResultType.ABORT, "stummer Ausstieg");
+
+    assert(compose(fraktur).type == ComposeResultType.EAT);
+    assert(compose(kleinC).type == ComposeResultType.EAT);
+    auto roh = compose(kleinA);
+    assert(roh.type == ComposeResultType.ABORT && roh.result == "\U0001D535ca"w,
+        "ohne vorherige Ausgabe tippt der Abbruch die rohe Sequenz");
 }
 
 // Diese und die naechsten Tests brauchen KEYSYM_0/KEYSYM_A/... bereits befuellt -

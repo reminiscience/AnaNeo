@@ -2,11 +2,18 @@ module schriftvarianten;
 
 /// Die sechs Schriftfamilien des Blocks "Mathematical Alphanumeric Symbols".
 /// ANTIQUA hat keine schlichte Reihe - das waere gewoehnlicher Text.
-enum Familie { ANTIQUA, SCHREIBSCHRIFT, FRAKTUR, DOPPELT, SERIFENLOS, DICKTENGLEICH }
+///
+/// KALLIGRAFIE ist keine siebte Familie des Blocks, sondern die Schreibschrift
+/// mit dem Variantenselektor U+FE00 ("chancery style", LaTeX \mathcal):
+/// Unicode fuehrt nur EINEN Script-Block, der Unterschied zu \mathscr ist
+/// Schriftsache. Die standardisierten Variantenfolgen gibt es seit Unicode 14
+/// nur fuer die 26 Grossbuchstaben - deshalb hat die Reihe keine Kleinbasis.
+enum Familie { ANTIQUA, SCHREIBSCHRIFT, FRAKTUR, DOPPELT, SERIFENLOS, DICKTENGLEICH, KALLIGRAFIE }
 
-/// Eine der 13 in Unicode belegten Reihen. Die Basen sind die Codepunkte von
-/// 'A', 'a', '0' und dem ersten griechischen Platz; 0 heisst "diese Reihe
-/// fuehrt das nicht".
+/// Eine der 13 in Unicode belegten Reihen plus die Variantenreihen. Die Basen
+/// sind die Codepunkte von 'A', 'a', '0' und dem ersten griechischen Platz;
+/// 0 heisst "diese Reihe fuehrt das nicht". Ein Selektor ungleich 0 wird
+/// jedem Ergebnis der Reihe angehaengt.
 struct Reihe {
     Familie familie;
     bool fett;
@@ -16,7 +23,15 @@ struct Reihe {
     uint kleinBasis;
     uint ziffernBasis;
     uint griechischBasis;
+    dchar selektor = 0;
+    /// Nicht leer: die Reihe tippt kein Zeichen, sondern das LaTeX-Makro
+    /// `\<makro>{Basis}` als Text - fuer Renderer, die Variantenfolgen nicht
+    /// kennen (KaTeX bildet U+1D49C immer auf \mathscr ab). Nur A-Z.
+    string makro;
 }
+
+/// Variantenselektor der Chancery-Form (StandardizedVariants.txt: "chancery style").
+enum dchar SELEKTOR_CHANCERY = 0xFE00;
 
 immutable(Reihe)[] reihen() pure nothrow {
     static immutable Reihe[] tabelle = [
@@ -38,6 +53,16 @@ immutable(Reihe)[] reihen() pure nothrow {
         Reihe(Familie.SERIFENLOS,     false, true,  'l', 0x1D608, 0x1D622, 0,       0),
         Reihe(Familie.SERIFENLOS,     true,  true,  'l', 0x1D63C, 0x1D656, 0,       0x1D790),
         Reihe(Familie.DICKTENGLEICH,  false, false, 'm', 0x1D670, 0x1D68A, 0x1D7F6, 0),
+        // Chancery: dieselben Grossbuchstaben wie die Schreibschrift, jedes
+        // Ergebnis mit U+FE00 dahinter. Keine Kleinbasis, kein fettes C -
+        // Unicode kennt die Variantenfolge nur fuer die 26 Grossbuchstaben.
+        Reihe(Familie.KALLIGRAFIE,    false, false, 'c', 0x1D49C, 0,       0,       0, SELEKTOR_CHANCERY),
+        // Das grosse C waere nach der Notation "Chancery fett" - das gibt es
+        // nicht. Stattdessen tippt es das LaTeX-Makro als Text: KaTeX bildet
+        // jedes Unicode-Script-Zeichen auf \mathscr ab und ignoriert den
+        // Selektor (gemessen am 11.09.2026 mit KaTeX 0.16.11 und 0.18.5), in
+        // KaTeX-Feldern fuehrt zu \mathcal also nur das Makro.
+        Reihe(Familie.KALLIGRAFIE,    true,  false, 'c', 0,       0,       0,       0, 0, "mathcal"),
     ];
     return tabelle;
 }
@@ -71,6 +96,12 @@ immutable(dchar)[] griechischeBasen() pure nothrow {
 /// vorhandenen Reihe, sondern sind ihre ganze Reihe.
 uint ausnahme(Familie familie, bool fett, bool kursiv, dchar basis) pure nothrow {
     if (fett) return 0;   // keine der 24 liegt in einer fetten Reihe
+
+    // Chancery teilt die acht Letterlike-Grossbuchstaben der Schreibschrift
+    // (StandardizedVariants.txt fuehrt sie mit U+FE00), nicht aber deren drei
+    // Kleinbuchstaben - die Reihe hat keine Kleinbasis.
+    if (familie == Familie.KALLIGRAFIE)
+        return (basis >= 'A' && basis <= 'Z') ? ausnahme(Familie.SCHREIBSCHRIFT, fett, kursiv, basis) : 0;
 
     if (familie == Familie.ANTIQUA && kursiv && basis == 'h') return 0x210E;
 
@@ -137,6 +168,11 @@ string erzeugeSchriftModul() {
     s.put("# geschrieben heisst fett, ein / vor der Basis heisst kursiv.\n");
     s.put("#   a Antiqua, s Schreibschrift, r Fraktur, d doppelt gestrichen,\n");
     s.put("#   l serifenlos, m dicktengleich\n");
+    s.put("#   c Kalligrafie: Schreibschrift-Grossbuchstabe mit Variantenselektor\n");
+    s.put("#     U+FE00 (chancery style, LaTeX \\mathcal) - nur A-Z, kein fettes C.\n");
+    s.put("#     Das Ergebnis sind zwei Codepunkte, hinter dem String beide genannt.\n");
+    s.put("#   C tippt stattdessen das LaTeX-Makro \\mathcal{A} als Text - fuer KaTeX,\n");
+    s.put("#     das Unicode-Script immer als \\mathscr setzt und Selektoren ignoriert.\n");
     s.put("#\n");
     s.put("# Klebrig je Reihe: nach einer Ausgabe geht es am Familien- bzw.\n");
     s.put("# Kursivknoten weiter - ganze Woerter in einer Schrift.\n");
@@ -147,17 +183,32 @@ string erzeugeSchriftModul() {
     }
 
     foreach (r; reihen) {
-        s.put(format("\n# %s%s%s\n", familienName(r.familie),
-            r.fett ? " fett" : "", r.kursiv ? " kursiv" : ""));
+        if (r.makro.length)
+            s.put(format("\n# LaTeX-Makro \\%s als Text\n", r.makro));
+        else
+            s.put(format("\n# %s%s%s\n", familienName(r.familie),
+                r.fett ? " fett" : "", r.kursiv ? " kursiv" : ""));
 
         dchar fam = r.fett ? cast(dchar)(r.familienZeichen - 32) : r.familienZeichen;
         string kursivTeil = r.kursiv ? " <slash>" : "";
 
         void zeile(dchar basis) {
+            if (r.makro.length) {
+                if (basis < 'A' || basis > 'Z') return;
+                s.put(format("<U1D535> <U%04X> <U%04X> : \"\\\\%s{%s}\"\n",
+                    cast(uint) fam, cast(uint) basis, r.makro, dcharAlsText(basis)));
+                return;
+            }
             auto cp = codepunkt(r, basis);
             if (cp == 0) return;
-            s.put(format("<U1D535> <U%04X>%s <U%04X> : \"%s\" U%04X\n",
-                cast(uint) fam, kursivTeil, cast(uint) basis, dcharAlsText(cp), cp));
+            string ergebnis = dcharAlsText(cp);
+            string namen = format("U%04X", cp);
+            if (r.selektor) {
+                ergebnis ~= dcharAlsText(r.selektor);
+                namen ~= format(" U%04X", cast(uint) r.selektor);
+            }
+            s.put(format("<U1D535> <U%04X>%s <U%04X> : \"%s\" %s\n",
+                cast(uint) fam, kursivTeil, cast(uint) basis, ergebnis, namen));
         }
 
         foreach (dchar b; "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") zeile(b);
@@ -176,6 +227,7 @@ private string familienName(Familie f) pure nothrow {
         case Familie.DOPPELT: return "doppelt gestrichen";
         case Familie.SERIFENLOS: return "serifenlos";
         case Familie.DICKTENGLEICH: return "dicktengleich";
+        case Familie.KALLIGRAFIE: return "Kalligrafie (Schreibschrift + U+FE00)";
     }
 }
 
@@ -192,13 +244,113 @@ version (unittest) {
 }
 
 unittest {
-    // Vierzehn Reihen, und die Familienzeichen decken die sechs Familien ab.
-    assert(reihen.length == 14);
+    // Sechzehn Reihen, und die Familienzeichen decken die sechs Familien
+    // plus die Chancery-Variante ab (Unicode unter c, LaTeX-Makro unter C).
+    assert(reihen.length == 16);
     assert(griechischeBasen.length == 58);
 
     bool[dchar] zeichen;
     foreach (r; reihen) zeichen[r.familienZeichen] = true;
-    assert(zeichen.length == 6);
+    assert(zeichen.length == 7);
+
+    // Genau eine Reihe traegt einen Selektor, und die ist Chancery.
+    uint mitSelektor;
+    foreach (r; reihen) if (r.selektor) {
+        mitSelektor++;
+        assert(r.familie == Familie.KALLIGRAFIE && r.selektor == 0xFE00);
+    }
+    assert(mitSelektor == 1);
+
+    // Genau eine Reihe tippt ein Makro, sie fuehrt keine Codepunkte und
+    // erscheint im Modul als grosses C.
+    uint mitMakro;
+    foreach (r; reihen) if (r.makro.length) {
+        mitMakro++;
+        assert(r.familie == Familie.KALLIGRAFIE && r.fett && r.familienZeichen == 'c');
+        assert(r.grossBasis == 0 && r.kleinBasis == 0 && r.selektor == 0);
+        foreach (dchar b; "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+            assert(codepunkt(r, b) == 0, "die Makro-Reihe liefert keine Codepunkte");
+    }
+    assert(mitMakro == 1);
+}
+
+unittest {
+    // Die Makro-Reihe im erzeugten Modul: 26 Zeilen unter <U0043>, jede tippt
+    // \mathcal{X} (im XCompose-String als \\ maskiert), keine Kleinbuchstaben,
+    // klebrig wie die anderen Reihen.
+    import std.algorithm : count, canFind;
+    import std.string : splitLines, startsWith;
+
+    auto modul = erzeugeSchriftModul();
+    assert(modul.canFind("#klebrig <U1D535> <U0043>\n"), "die Makro-Reihe ist klebrig");
+    assert(modul.canFind("<U1D535> <U0043> <U0041> : \"\\\\mathcal{A}\"\n"));
+    assert(modul.canFind("<U1D535> <U0043> <U005A> : \"\\\\mathcal{Z}\"\n"));
+
+    uint zeilen;
+    foreach (zeile; modul.splitLines) {
+        if (!zeile.startsWith("<U1D535> <U0043> ")) continue;
+        zeilen++;
+        assert(zeile.canFind("\"\\\\mathcal{"), "jede C-Zeile tippt das Makro: " ~ zeile);
+    }
+    assert(zeilen == 26, "26 Makro-Zeilen, keine Kleinbuchstaben");
+    assert(!modul.canFind("<U1D535> <U0043> <U0061>"));
+}
+
+unittest {
+    // Die Chancery-Reihe: dieselben 26 Grossbuchstaben wie die Schreibschrift
+    // - einschliesslich der acht Letterlike-Ausnahmen -, sonst nichts. Die
+    // drei Kleinbuchstaben-Ausnahmen der Schreibschrift (e g o) duerfen NICHT
+    // hereinbluten, ebensowenig Kleinbuchstaben aus der Formel.
+    immutable(Reihe)* finde(Familie f) {
+        foreach (ref r; reihen) if (r.familie == f && !r.fett && !r.kursiv) return &r;
+        return null;
+    }
+    auto chancery = finde(Familie.KALLIGRAFIE);
+    auto script = finde(Familie.SCHREIBSCHRIFT);
+    assert(chancery !is null && chancery.familienZeichen == 'c');
+
+    foreach (dchar b; "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        assert(codepunkt(*chancery, b) != 0);
+        assert(codepunkt(*chancery, b) == codepunkt(*script, b),
+            "Chancery und Schreibschrift teilen den Grossbuchstaben");
+    }
+    assert(codepunkt(*chancery, 'A') == 0x1D49C);
+    assert(codepunkt(*chancery, 'B') == 0x212C, "Letterlike-Ausnahme gilt auch fuer Chancery");
+    assert(codepunkt(*chancery, 'R') == 0x211B);
+
+    foreach (dchar b; "abcdefghijklmnopqrstuvwxyz0123456789") assert(codepunkt(*chancery, b) == 0);
+    assert(codepunkt(*chancery, 'e') == 0, "die Kleinbuchstaben-Ausnahme e blutet nicht herein");
+    assert(codepunkt(*chancery, 'Α') == 0);
+}
+
+unittest {
+    // Wachhund gegen StandardizedVariants.txt (UCD 17.0.0): Die Chancery-Reihe
+    // muss GENAU die dort als "chancery style" gefuehrten Folgen liefern -
+    // nicht mehr (kein Kleinbuchstabe), nicht weniger (keine vergessene
+    // Ausnahme), und mit dem richtigen Selektor.
+    import std.algorithm : sort, canFind;
+    import std.string : strip;
+
+    uint[] standard;
+    foreach (zeile; readText(buildPath(".", "data", "StandardizedVariants.txt")).splitLines) {
+        if (!zeile.canFind("chancery style")) continue;
+        auto felder = zeile.split(";");
+        auto folge = felder[0].strip.split(" ");
+        assert(folge.length == 2 && to!uint(folge[1], 16) == SELEKTOR_CHANCERY);
+        standard ~= to!uint(folge[0], 16);
+    }
+    sort(standard);
+    assert(standard.length == 26, "26 chancery-Folgen erwartet");
+
+    uint[] gerechnet;
+    foreach (r; reihen) if (r.selektor == SELEKTOR_CHANCERY) {
+        foreach (dchar b; "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") {
+            auto cp = codepunkt(r, b);
+            if (cp) gerechnet ~= cp;
+        }
+    }
+    sort(gerechnet);
+    assert(gerechnet == standard, "Chancery-Reihe und StandardizedVariants.txt weichen ab");
 }
 
 unittest {
@@ -296,13 +448,22 @@ unittest {
 
     uint gezaehlt;
     foreach (r; reihen) {
+        if (r.makro.length) continue;   // tippt Text, keine Codepunkte
+        if (r.selektor) assert(cast(uint) r.selektor in zugewiesen, "unzugewiesener Selektor");
         foreach (dchar b; "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") {
             auto cp = codepunkt(r, b);
+            immutable gross = b <= 'Z';
+            immutable basisGesetzt = gross ? r.grossBasis != 0 : r.kleinBasis != 0;
             if (r.grossBasis == 0 && r.kleinBasis == 0) {
                 // die doppelt-gestrichen-kursive Reihe: nur die fuenf Ausnahmen
                 if (cp == 0) continue;
+            } else if (basisGesetzt) {
+                assert(cp != 0, "eine gesetzte Basis fuehrt alle 26 Buchstaben ihrer Haelfte");
             } else {
-                assert(cp != 0, "jede volle Reihe fuehrt alle 52 Buchstaben");
+                // Chancery: Grossbasis gesetzt, Kleinbasis nicht - die Haelfte
+                // ohne Basis bleibt leer, auch keine Ausnahme darf hineinbluten.
+                assert(cp == 0, "Buchstabe ohne Basis in der Reihe");
+                continue;
             }
             assert(cp in zugewiesen, "unzugewiesener Codepunkt in einer Buchstabenreihe");
             gezaehlt++;
@@ -316,7 +477,7 @@ unittest {
             assert(cp in zugewiesen); gezaehlt++;
         }
     }
-    assert(gezaehlt == 1021, "die Tabelle hat 1 021 Eintraege, gezaehlt: " ~ gezaehlt.to!string);
+    assert(gezaehlt == 1047, "die Tabelle hat 1 047 Eintraege, gezaehlt: " ~ gezaehlt.to!string);
 }
 
 unittest {

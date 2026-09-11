@@ -710,8 +710,8 @@ unittest {
     }
 
     suche(&composeRoot);
-    assert(klebrigeGefunden == 22,
-        "22 klebrige Knoten wie in Waechter 9 - sonst prueft dieser Waechter "
+    assert(klebrigeGefunden == 24,
+        "24 klebrige Knoten wie in Waechter 9 - sonst prueft dieser Waechter "
         ~ "einen anderen Bestand als gemeint");
 }
 
