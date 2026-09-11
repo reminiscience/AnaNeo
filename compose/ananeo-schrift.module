@@ -8,6 +8,11 @@
 # geschrieben heisst fett, ein / vor der Basis heisst kursiv.
 #   a Antiqua, s Schreibschrift, r Fraktur, d doppelt gestrichen,
 #   l serifenlos, m dicktengleich
+#   c Kalligrafie: Schreibschrift-Grossbuchstabe mit Variantenselektor
+#     U+FE00 (chancery style, LaTeX \mathcal) - nur A-Z, kein fettes C.
+#     Das Ergebnis sind zwei Codepunkte, hinter dem String beide genannt.
+#   C tippt stattdessen das LaTeX-Makro \mathcal{A} als Text - fuer KaTeX,
+#     das Unicode-Script immer als \mathscr setzt und Selektoren ignoriert.
 #
 # Klebrig je Reihe: nach einer Ausgabe geht es am Familien- bzw.
 # Kursivknoten weiter - ganze Woerter in einer Schrift.
@@ -25,6 +30,8 @@
 #klebrig <U1D535> <U006C> <slash>
 #klebrig <U1D535> <U004C> <slash>
 #klebrig <U1D535> <U006D>
+#klebrig <U1D535> <U0063>
+#klebrig <U1D535> <U0043>
 
 # Antiqua fett
 <U1D535> <U0041> <U0041> : "𝐀" U1D400
@@ -1074,3 +1081,59 @@
 <U1D535> <U006D> <U0037> : "𝟽" U1D7FD
 <U1D535> <U006D> <U0038> : "𝟾" U1D7FE
 <U1D535> <U006D> <U0039> : "𝟿" U1D7FF
+
+# Kalligrafie (Schreibschrift + U+FE00)
+<U1D535> <U0063> <U0041> : "𝒜︀" U1D49C UFE00
+<U1D535> <U0063> <U0042> : "ℬ︀" U212C UFE00
+<U1D535> <U0063> <U0043> : "𝒞︀" U1D49E UFE00
+<U1D535> <U0063> <U0044> : "𝒟︀" U1D49F UFE00
+<U1D535> <U0063> <U0045> : "ℰ︀" U2130 UFE00
+<U1D535> <U0063> <U0046> : "ℱ︀" U2131 UFE00
+<U1D535> <U0063> <U0047> : "𝒢︀" U1D4A2 UFE00
+<U1D535> <U0063> <U0048> : "ℋ︀" U210B UFE00
+<U1D535> <U0063> <U0049> : "ℐ︀" U2110 UFE00
+<U1D535> <U0063> <U004A> : "𝒥︀" U1D4A5 UFE00
+<U1D535> <U0063> <U004B> : "𝒦︀" U1D4A6 UFE00
+<U1D535> <U0063> <U004C> : "ℒ︀" U2112 UFE00
+<U1D535> <U0063> <U004D> : "ℳ︀" U2133 UFE00
+<U1D535> <U0063> <U004E> : "𝒩︀" U1D4A9 UFE00
+<U1D535> <U0063> <U004F> : "𝒪︀" U1D4AA UFE00
+<U1D535> <U0063> <U0050> : "𝒫︀" U1D4AB UFE00
+<U1D535> <U0063> <U0051> : "𝒬︀" U1D4AC UFE00
+<U1D535> <U0063> <U0052> : "ℛ︀" U211B UFE00
+<U1D535> <U0063> <U0053> : "𝒮︀" U1D4AE UFE00
+<U1D535> <U0063> <U0054> : "𝒯︀" U1D4AF UFE00
+<U1D535> <U0063> <U0055> : "𝒰︀" U1D4B0 UFE00
+<U1D535> <U0063> <U0056> : "𝒱︀" U1D4B1 UFE00
+<U1D535> <U0063> <U0057> : "𝒲︀" U1D4B2 UFE00
+<U1D535> <U0063> <U0058> : "𝒳︀" U1D4B3 UFE00
+<U1D535> <U0063> <U0059> : "𝒴︀" U1D4B4 UFE00
+<U1D535> <U0063> <U005A> : "𝒵︀" U1D4B5 UFE00
+
+# LaTeX-Makro \mathcal als Text
+<U1D535> <U0043> <U0041> : "\\mathcal{A}"
+<U1D535> <U0043> <U0042> : "\\mathcal{B}"
+<U1D535> <U0043> <U0043> : "\\mathcal{C}"
+<U1D535> <U0043> <U0044> : "\\mathcal{D}"
+<U1D535> <U0043> <U0045> : "\\mathcal{E}"
+<U1D535> <U0043> <U0046> : "\\mathcal{F}"
+<U1D535> <U0043> <U0047> : "\\mathcal{G}"
+<U1D535> <U0043> <U0048> : "\\mathcal{H}"
+<U1D535> <U0043> <U0049> : "\\mathcal{I}"
+<U1D535> <U0043> <U004A> : "\\mathcal{J}"
+<U1D535> <U0043> <U004B> : "\\mathcal{K}"
+<U1D535> <U0043> <U004C> : "\\mathcal{L}"
+<U1D535> <U0043> <U004D> : "\\mathcal{M}"
+<U1D535> <U0043> <U004E> : "\\mathcal{N}"
+<U1D535> <U0043> <U004F> : "\\mathcal{O}"
+<U1D535> <U0043> <U0050> : "\\mathcal{P}"
+<U1D535> <U0043> <U0051> : "\\mathcal{Q}"
+<U1D535> <U0043> <U0052> : "\\mathcal{R}"
+<U1D535> <U0043> <U0053> : "\\mathcal{S}"
+<U1D535> <U0043> <U0054> : "\\mathcal{T}"
+<U1D535> <U0043> <U0055> : "\\mathcal{U}"
+<U1D535> <U0043> <U0056> : "\\mathcal{V}"
+<U1D535> <U0043> <U0057> : "\\mathcal{W}"
+<U1D535> <U0043> <U0058> : "\\mathcal{X}"
+<U1D535> <U0043> <U0059> : "\\mathcal{Y}"
+<U1D535> <U0043> <U005A> : "\\mathcal{Z}"

@@ -187,10 +187,19 @@ GlyphLookup lookupGlyphs(wstring text) {
     return ergebnis;
 }
 
+/// Variantenselektoren U+FE00-FE0F sind default-ignorable und haben keine
+/// eigene Glyphe. Keine Schrift der Kette fuehrt sie zusammen mit den
+/// mathematischen Script-Buchstaben (gemessen am 11.09.2026: den Selektor hat
+/// nur Myanmar Text, die Buchstaben nur Segoe UI Symbol) - ohne diese Ausnahme
+/// fiele jedes Chancery-Ergebnis (Script-Buchstabe + U+FE00) auf den Codepunkt-Notnagel.
+private bool istVariantenselektor(dchar cp) pure nothrow @nogc {
+    return cp >= 0xFE00 && cp <= 0xFE0F;
+}
+
 /// Nachschlag in genau einer Schrift der Kette. Ein Treffer verlangt, dass die
 /// Schrift JEDEN Codepunkt des Textes fuehrt - Glyph 0 ist die Auskunft "kenne
 /// ich nicht" und macht den ganzen Text zum Fehlschlag, damit die naechste
-/// Schrift der Kette drankommt.
+/// Schrift der Kette drankommt. Variantenselektoren werden uebersprungen.
 GlyphLookup lookupInFont(wstring text, size_t fontIndex) {
     GlyphLookup ergebnis;
     if (text.length == 0 || fontIndex >= fontCmaps.length) return ergebnis;
@@ -199,6 +208,7 @@ GlyphLookup lookupInFont(wstring text, size_t fontIndex) {
     WORD[] glyphen;
     try {
         foreach (dchar cp; text) {
+            if (istVariantenselektor(cp)) continue;
             auto glyph = fontCmaps[fontIndex].glyphFor(cp);
             if (glyph == 0) return ergebnis;
             glyphen ~= glyph;
@@ -207,6 +217,8 @@ GlyphLookup lookupInFont(wstring text, size_t fontIndex) {
         // Kaputte Surrogatfolge im Text - kein Treffer, kein Absturz.
         return ergebnis;
     }
+
+    if (glyphen.length == 0) return ergebnis;  // Text bestand nur aus Selektoren
 
     ergebnis.fontIndex = fontIndex;
     ergebnis.glyphs = glyphen;
@@ -323,6 +335,16 @@ unittest {
 
     // Schach und Alchemie kann keine mitgelieferte Windows-Schrift. Faellt die
     // private Ladung aus, faellt genau dieser Test - und nur er.
+    // Chancery-Ergebnis der Schrifttabelle: Script-Buchstabe plus U+FE00. Der
+    // Selektor wird uebersprungen, sonst faende keine Schrift der Kette beide
+    // Codepunkte und die Taste zeigte den Hex-Notnagel statt des Buchstabens.
+    auto chancery = lookupGlyphs("\U0001D49C\uFE00"w);
+    auto script = lookupGlyphs("\U0001D49C"w);
+    assert(chancery.found, "Chancery-Folge (U+1D49C U+FE00) ohne Glyph");
+    assert(chancery.fontIndex == script.fontIndex && chancery.glyphs == script.glyphs,
+        "Chancery-Folge muss wie der blosse Script-Buchstabe aufloesen");
+    assert(!lookupGlyphs("\uFE00"w).found, "ein Selektor allein ist kein Treffer");
+
     auto schach = lookupGlyphs("\U0001FA00"w);
     assert(schach.found, "Schach (U+1FA00) ohne Glyph - mitgelieferte Schrift nicht geladen?");
     assert(FONT_CHAIN[schach.fontIndex] == BUNDLED_FONT_NAME);

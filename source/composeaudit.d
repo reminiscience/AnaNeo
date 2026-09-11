@@ -1795,7 +1795,7 @@ unittest {
     assert(gefunden == erwartet,
         "klebrig sind genau die von der Regel geforderten Knoten, gefunden: "
         ~ gefunden.to!string);
-    assert(gefunden.length == 22, "zwei Hoch/Tief, sechs Kreis, vierzehn Schrift");
+    assert(gefunden.length == 24, "zwei Hoch/Tief, sechs Kreis, sechzehn Schrift");
 }
 
 unittest {
