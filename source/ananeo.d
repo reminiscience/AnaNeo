@@ -821,7 +821,8 @@ bool handleKeyEvent(Scancode scan, bool down) nothrow {
             //   - if false, don't eat keys and instead leave the translation of those layers to kbdneo
             //     except the navigation keys on layer 4 that are missing in kbdneo
             //   - also eat every key if mod 4 lock is active, because that isn't handled in kbdneo
-            if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && needsNeoModifier) || isLayer4NavKey || lockActive) {
+            // - Eat keys marked "replaceNative" in layouts.json, whose mapping differs from the native driver
+            if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && needsNeoModifier) || isLayer4NavKey || lockActive || nk.replaceNative) {
                 eat = true;
                 sendNeoKey(nk, scan, true);
             }
@@ -852,7 +853,9 @@ bool handleKeyEvent(Scancode scan, bool down) nothrow {
             updateComposeStateAsync();
         }
     } else {
-        if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && needsNeoModifier) || isLayer4NavKey || lockActive) {
+        // Massgeblich ist beim Loslassen die beim Druck gesendete Zelle, nicht die der aktuellen Ebene.
+        bool heldReplacesNative = (scan in heldKeys) !is null && heldKeys[scan].replaceNative;
+        if (standaloneModeActive || oneHandedModeActive || isNumpadKey || (configFilterNeoModifiers && needsNeoModifier) || isLayer4NavKey || lockActive || heldReplacesNative) {
             eat = true;
 
             // release the key that is held for this vk

@@ -267,6 +267,9 @@ struct NeoKey {
     wstring chars;
     PartialModifierState modifiers;
     string label;
+    /// Auch im Erweiterungsmodus selbst senden statt an den nativen Treiber
+    /// durchzureichen - der kennt auf Ebene 1/2 nur seine eigene Belegung.
+    bool replaceNative;
 }
 
 struct MapEntry {
@@ -408,6 +411,10 @@ NeoKey parseNeoKey(JSONValue jsonKey) {
         key.label = jsonKey["char"].str;
     }
 
+    if ("replaceNative" in jsonKey) {
+        key.replaceNative = jsonKey["replaceNative"].boolean;
+    }
+
     return key;
 }
 
@@ -442,6 +449,20 @@ unittest {
     assert(parseScancode("2A") == Scancode(0x2A, false));
     assert(parseScancode("38+") == Scancode(0x38, true));
     assert(parseScancode("FF") == Scancode(0xFF, false));
+}
+
+unittest {
+    // replaceNative: Vorgabe falsch, die Marke setzt es, und sie aendert
+    // sonst nichts an der Zelle.
+    import std.json : parseJSON;
+    initKeysyms(".");
+    auto ohne = parseNeoKey(parseJSON(`{"keysym": "U2011", "char": "‑"}`));
+    auto mit = parseNeoKey(parseJSON(`{"keysym": "U2011", "char": "‑", "replaceNative": true}`));
+    auto aus = parseNeoKey(parseJSON(`{"keysym": "U2011", "char": "‑", "replaceNative": false}`));
+    assert(!ohne.replaceNative);
+    assert(mit.replaceNative);
+    assert(!aus.replaceNative);
+    assert(mit.chars == ohne.chars && mit.keytype == ohne.keytype && mit.keysym == ohne.keysym);
 }
 
 unittest {
@@ -870,6 +891,15 @@ unittest {
         "Ebene 8: normales Leerzeichen als Ausweg im gerasteten Mathe");
     assert(leer.layers[7].vkCode == VKEY.VK_SPACE,
         "Ebene 8: der VK-Eintrag muss VK_SPACE sein, nicht irgendein VK");
+
+    // Minus, Ebene 1: geschuetzter Bindestrich statt Divis-Minus. Ohne die
+    // Marke reichte der Erweiterungsmodus die Taste an kbdnoted durch, und es
+    // kaeme weiter U+002D.
+    auto minus = annoted.map[Scancode(0x0C, false)];
+    assert(minus.layers[0].chars == "‑"w, "AnNoted 0C/1: U+2011 fehlt");
+    assert(minus.layers[0].replaceNative,
+        "AnNoted 0C/1: ohne replaceNative greift die Zelle nur im Standalone-Modus");
+    assert(!minus.layers[1].replaceNative, "AnNoted 0C/2: Marke nur, wo noetig");
 
     // Die verdraengte Numpad-0 liegt auf w, Ebene 4
     auto wTaste = annoted.map[Scancode(0x31, false)];

@@ -103,6 +103,8 @@ wenn eine vergessen wurde.
    zwischen Unicode-Paketen und nativer Tastenkombination).
 6. **Commit nach Konvention.**
 
+**Zellen auf den Ebenen 1 und 2 brauchen eine Marke.** Im Erweiterungsmodus reicht AnaNeo diese beiden Ebenen an den nativen Treiber durch – eine Umbelegung dort greift sonst nur im Standalone-Modus oder unter Rastung, gegen `kbdnoted` tippt weiter das Zeichen des Treibers. Die Zelle bekommt deshalb `"replaceNative": true`, wie die Minus-Taste auf Ebene 1 (`‑`, U+2011). Die Marke nur setzen, wo die Belegung vom Treiber abweicht: Eine markierte Zelle kommt als Unicode-Paket an und ist für Tastenkürzel blind (siehe `DEVDOC.md`, »Grundebenen und Zeichentasten«).
+
 ## Die Gegenrichtung: eine neue Ebenenzelle kann eine Doppelung erzeugen
 
 Wer eine Zelle neu belegt, kann damit ein Zeichen auf eine Ebene holen, das im Compose-Baum schon steht – ohne Compose überhaupt anzufassen. Das ist meistens richtig so: Die Regel der Aufgabenteilung erlaubt die Doppelung ausdrücklich, solange die Compose-Sequenz Glied einer Systematik ist (die Ebene ist dann der schnelle Griff, der Baum die Herleitung).
