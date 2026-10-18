@@ -1305,10 +1305,10 @@ unittest {
         assert(k[5].chars == z.e6, "Ebene 6, Scancode " ~ z.sc);
     }
 
-    // Die frei gewordene K-Taste traegt das doppelt gestrichene K.
+    // Die frei gewordene K-Taste traegt das doppelt gestrichene K. Ebene 5
+    // ist seit dem 18.10.2026 mit ⋰ belegt (Auslassungspunkte, siehe oben).
     auto kTaste = an.map[parseScancode("35")].layers;
-    assert(kTaste[4].chars.length == 0 && kTaste[4].vkCode == VKEY.VK_VOID,
-        "Ebene 5 der K-Taste ist frei");
+    assert(kTaste[4].chars == "⋰"w, "Ebene 5 der K-Taste traegt ⋰");
     assert(kTaste[5].chars == "\U0001D542"w,
         "Ebene 6 der K-Taste traegt das doppelt gestrichene K");
     assert(kTaste[5].keysym == parseKeysym("U1D542"));
