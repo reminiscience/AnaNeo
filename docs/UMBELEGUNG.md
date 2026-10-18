@@ -116,3 +116,24 @@ ananeo-tool compose spiegel --layout AnNoted
 ```
 
 Taucht die neue Zelle dort als `Einzelfall` auf, steht ihre Compose-Sequenz allein und ist damit ein Kandidat für den Schnitt. Taucht sie als `Reihe` oder `Muster` auf oder gar nicht, ist nichts zu tun. Die Regel entscheidet dabei **nie** über die Ebene – sie kann eine Compose-Zeile zum Schnitt vorschlagen, aber niemals verlangen, dass eine Ebenenzelle geräumt wird.
+
+## Freie Zellen im Mathematikblock
+
+Stand 18.10.2026, nach den Ellipsen `⋯ ⋮ ⋱ ⋰` auf z/5, ß/5, ß/6 und k/5. Gezählt sind nur Zeichentasten des Hauptfelds; Esc, Tab, Enter, Leertaste und der Nummernblock sind auf den Ebenen 5–8 durchgehend belegt. Eine Zelle gilt als frei, wenn ihr Eintrag in `layouts.json` leer ist (`{}`).
+
+**Ebenen 5 und 6** – neun freie Zellen, drei auf Ebene 5 und sechs auf Ebene 6:
+
+| Scancode | Taste | Ebene 5 | Ebene 6 |
+|---|---|---|---|
+| `29` | `^` (tot) | frei | frei |
+| `0D` | `` ` `` (tot) | frei | frei |
+| `2B` | `´` (tot) | frei | frei |
+| `02` | `1` | `¬` | frei |
+| `08` | `7` | `∝` | frei |
+| `2E` | `ü` | `∧` | frei |
+
+Ebene 6 trägt meist das Gegenstück, die Verneinung oder die große Form des Zeichens auf Ebene 5 derselben Taste (`∈`/`∉`, `∃`/`∄`, `∨`/`⋁`) – die drei Zellen auf `1`, `7` und `ü` sind deshalb die natürlichen Plätze für Partner von `¬`, `∝` und `∧` (`⋀` liegt allerdings schon auf a/6). Die toten Tasten `29`, `0D` und `2B` sind auf den Ebenen 1–4 Akzenttasten; auf den Themenebenen nehmen sie gewöhnliche Zeichen auf (Vorbild: `dead_belowdot` auf `29`/12 der Typografie).
+
+**Ebenen 7 und 8** (Hoch- und Tiefstellung) – je 31 freie Zellen: die drei toten Tasten und alle Buchstaben- und Satzzeichentasten außer `l`, `w`, `i` und `n`. Belegt sind nur die Ziffern, die Minustaste (`⁻`/`₋`), `l` (`⁼`/`₌`), `w` (`⁺`/`₊`), `i` (`ⁱ`/`ᵢ`) und `n` (`ⁿ`/`ₙ`). Wer hier weitere Buchstaben hoch- oder tiefstellt, muss vorher klären, welche – Unicode führt hochgestellte Buchstaben fast für das ganze Kleinalphabet, tiefgestellte nur für einen Teil (`ₐ ₑ ₕ ₖ ₗ ₘ ₒ ₚ ₛ ₜ ₓ` …), und `compose/ananeo-hochtief.module` erreicht beide schon vollständig über die Präfixe `ˣ` und `ₓ` auf Ebene 21.
+
+Die Tabelle ist von Hand gepflegt und veraltet mit jeder Umbelegung; wer eine dieser Zellen belegt, streicht sie hier im selben Commit. Im Zweifel gilt `layouts.json` – oder das Belegungsblatt (`ananeo-tool sheet AnNoted`), auf dem freie Zellen leer bleiben.
