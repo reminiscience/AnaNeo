@@ -1173,6 +1173,31 @@ unittest {
     assert(annoted.map[Scancode(0x32, false)].layers[10].keysym == parseKeysym("U26A5"),
         "AnNoted 32/11: ⚥ fehlt oder heisst falsch");
     assert(annoted.map[Scancode(0x32, false)].layers[10].chars == "⚥"w);
+
+    // Auslassungspunkte, 18.10.2026. Die mathematischen (U+22EE-U+22F1) liegen
+    // auf dem Mathematikblock, die typografischen Verwandten auf dem
+    // Typografieblock. ⋯ teilt sich die z-Taste mit … (z/3), ⋮ und ⋱ liegen
+    // auf ß, ⋰ auf k. Die typografischen spiegeln das: ‥ auf z, ⁝ und ⁞ auf ß.
+    // Alle stehen auch im Compose-Baum (Reihe <ellipsis>), die Zelle ist der
+    // schnelle Griff. ‥ traegt den X11-Namen, die anderen haben keinen.
+    auto z = annoted.map[Scancode(0x10, false)];
+    auto sz = annoted.map[Scancode(0x1B, false)];
+    auto k = annoted.map[Scancode(0x35, false)];
+    assert(z.layers[2].chars == "…"w, "AnNoted 10/3: … ist der Anker fuer ⋯");
+    assert(z.layers[4].keysym == parseKeysym("U22EF") && z.layers[4].chars == "⋯"w,
+        "AnNoted 10/5: ⋯ fehlt oder heisst falsch");
+    assert(sz.layers[4].keysym == parseKeysym("U22EE") && sz.layers[4].chars == "⋮"w,
+        "AnNoted 1B/5: ⋮ fehlt oder heisst falsch");
+    assert(sz.layers[5].keysym == parseKeysym("U22F1") && sz.layers[5].chars == "⋱"w,
+        "AnNoted 1B/6: ⋱ fehlt oder heisst falsch");
+    assert(k.layers[4].keysym == parseKeysym("U22F0") && k.layers[4].chars == "⋰"w,
+        "AnNoted 35/5: ⋰ fehlt oder heisst falsch");
+    assert(z.layers[9].keysym == parseKeysym("doubbaselinedot") && z.layers[9].chars == "‥"w,
+        "AnNoted 10/10: ‥ fehlt oder heisst falsch");
+    assert(sz.layers[8].keysym == parseKeysym("U205D") && sz.layers[8].chars == "⁝"w,
+        "AnNoted 1B/9: ⁝ fehlt oder heisst falsch");
+    assert(sz.layers[9].keysym == parseKeysym("U205E") && sz.layers[9].chars == "⁞"w,
+        "AnNoted 1B/10: ⁞ fehlt oder heisst falsch");
 }
 
 unittest {
@@ -1280,10 +1305,10 @@ unittest {
         assert(k[5].chars == z.e6, "Ebene 6, Scancode " ~ z.sc);
     }
 
-    // Die frei gewordene K-Taste traegt das doppelt gestrichene K.
+    // Die frei gewordene K-Taste traegt das doppelt gestrichene K. Ebene 5
+    // ist seit dem 18.10.2026 mit ⋰ belegt (Auslassungspunkte, siehe oben).
     auto kTaste = an.map[parseScancode("35")].layers;
-    assert(kTaste[4].chars.length == 0 && kTaste[4].vkCode == VKEY.VK_VOID,
-        "Ebene 5 der K-Taste ist frei");
+    assert(kTaste[4].chars == "⋰"w, "Ebene 5 der K-Taste traegt ⋰");
     assert(kTaste[5].chars == "\U0001D542"w,
         "Ebene 6 der K-Taste traegt das doppelt gestrichene K");
     assert(kTaste[5].keysym == parseKeysym("U1D542"));
