@@ -1077,6 +1077,15 @@ unittest {
     auto rTaste = annoted.map[Scancode(0x26, false)];
     assert(rTaste.layers[19].chars == "⏎"w, "r Ebene 20: Return-Zeichen U+23CE");
     assert(dTaste.layers[19].chars == "🁣"w, "d Ebene 20: Domino U+1F063");
+    // Ebene 20: Bedienzeichen fuer Menues und Smartphone-Knoepfe
+    auto menueTaste = annoted.map[Scancode(0x17, false)];
+    assert(menueTaste.layers[19].chars == "☰"w, "m Ebene 20: Hamburger-Menue U+2630");
+    auto kebabTaste = annoted.map[Scancode(0x35, false)];
+    assert(kebabTaste.layers[19].chars == "⋮"w, "k Ebene 20: Kebab-Menue U+22EE");
+    auto lupenTaste = annoted.map[Scancode(0x22, false)];
+    assert(lupenTaste.layers[19].chars == "🔍"w, "o Ebene 20: Lupe U+1F50D, Surrogatpaar ganz");
+    auto achtTaste = annoted.map[Scancode(0x09, false)];
+    assert(achtTaste.layers[19].chars == "⏯"w, "8 Ebene 20: Wiedergabe/Pause U+23EF");
     // Leertaste und Kopienregel auf den neuen Ebenen
     assert(leer.layers[16].keytype == NeoKeyType.VKEY && leer.layers[16].vkCode == VKEY.VK_SPACE,
         "Leertaste Ebene 17: VK_SPACE");
